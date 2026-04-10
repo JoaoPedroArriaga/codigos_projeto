@@ -1,0 +1,7 @@
+tempo_geracao=0.012041099980706349
+tempo_processamento=0.0482618999958504
+tempo_consumo=0.0007893000147305429
+tempo_total=0.06109229999128729
+num_consultas=5
+num_reservas=5
+num_baixas=0
