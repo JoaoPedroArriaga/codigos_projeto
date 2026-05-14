@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sistema de Estoque e Farmácia</title>
+    <link rel="stylesheet" href="static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🏥 Sistema de Estoque e Farmácia</h1>
+                <p class="status">Status: <span id="api-status" class="status-loading">Conectando...</span></p>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="navbar">
+            <button class="nav-btn active" data-tab="consultas">Consultas</button>
+            <button class="nav-btn" data-tab="reservas">Reservas</button>
+            <button class="nav-btn" data-tab="baixas">Baixas</button>
+            <button class="nav-btn" data-tab="estoque">Estoque</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Aba Consultas -->
+            <section id="consultas" class="tab-content active">
+                <div class="card">
+                    <h2>📋 Consultar Disponibilidade</h2>
+                    <form id="form-consulta">
+                        <div class="form-group">
+                            <label for="consulta-codigo">Código do Medicamento:</label>
+                            <input type="number" id="consulta-codigo" name="codigo_medicamento" placeholder="Ex: 789123" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="consulta-quantidade">Quantidade:</label>
+                            <input type="number" id="consulta-quantidade" name="quantidade" placeholder="Ex: 5" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="consulta-cpf">CPF do Paciente:</label>
+                            <input type="text" id="consulta-cpf" name="cpf_paciente" placeholder="12345678901" pattern="\d{11}" maxlength="11" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">🔍 Consultar</button>
+                    </form>
+
+                    <div id="resultado-consulta" class="resultado"></div>
+                </div>
+
+                <!-- Lista de Medicamentos -->
+                <div class="card">
+                    <h2>💊 Medicamentos Disponíveis</h2>
+                    <div id="lista-medicamentos" class="grid">
+                        <p class="loading">Carregando medicamentos...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Aba Reservas -->
+            <section id="reservas" class="tab-content">
+                <div class="card">
+                    <h2>🎫 Criar Reserva</h2>
+                    <form id="form-reserva">
+                        <div class="form-group">
+                            <label for="reserva-codigo">Código do Medicamento:</label>
+                            <input type="number" id="reserva-codigo" name="codigo_medicamento" placeholder="Ex: 789123" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reserva-quantidade">Quantidade:</label>
+                            <input type="number" id="reserva-quantidade" name="quantidade" placeholder="Ex: 5" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reserva-lote">Número do Lote:</label>
+                            <input type="text" id="reserva-lote" name="lote" placeholder="Ex: LOTE123" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="reserva-cpf">CPF do Paciente:</label>
+                            <input type="text" id="reserva-cpf" name="cpf_paciente" placeholder="12345678901" pattern="\d{11}" maxlength="11" required>
+                        </div>
+                        <button type="submit" class="btn btn-primary">✅ Criar Reserva</button>
+                    </form>
+
+                    <div id="resultado-reserva" class="resultado"></div>
+                </div>
+
+                <!-- Lista de Reservas Ativas -->
+                <div class="card">
+                    <h2>📦 Reservas Ativas</h2>
+                    <button class="btn btn-secondary" onclick="carregarReservasAtivas()">🔄 Atualizar</button>
+                    <div id="lista-reservas" class="tabela">
+                        <p class="loading">Carregando reservas...</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Aba Baixas -->
+            <section id="baixas" class="tab-content">
+                <div class="card">
+                    <h2>📉 Registrar Baixa de Estoque</h2>
+                    <form id="form-baixa">
+                        <div class="form-group">
+                            <label for="baixa-codigo">Código do Medicamento:</label>
+                            <input type="number" id="baixa-codigo" name="codigo_medicamento" placeholder="Ex: 789123" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="baixa-quantidade">Quantidade:</label>
+                            <input type="number" id="baixa-quantidade" name="quantidade" placeholder="Ex: 5" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="baixa-lote">Número do Lote:</label>
+                            <input type="text" id="baixa-lote" name="lote" placeholder="Ex: LOTE123" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="baixa-motivo">Motivo (opcional):</label>
+                            <input type="text" id="baixa-motivo" name="motivo" placeholder="Ex: Dispensado ao paciente">
+                        </div>
+                        <button type="submit" class="btn btn-danger">❌ Confirmar Baixa</button>
+                    </form>
+
+                    <div id="resultado-baixa" class="resultado"></div>
+                </div>
+            </section>
+
+            <!-- Aba Estoque -->
+            <section id="estoque" class="tab-content">
+                <div class="card">
+                    <h2>📊 Consultar Estoque</h2>
+                    <div class="form-group">
+                        <label for="estoque-codigo">Código do Medicamento:</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="number" id="estoque-codigo" placeholder="Ex: 789123">
+                            <button type="button" class="btn btn-primary" onclick="carregarEstoque()">🔍 Buscar</button>
+                        </div>
+                    </div>
+
+                    <div id="resultado-estoque" class="resultado"></div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Footer -->
+        <footer class="footer">
+            <p>© 2026 Sistema de Estoque e Farmácia - v2.0.0</p>
+            <p><a href="/docs" target="_blank">📚 Documentação da API</a></p>
+        </footer>
+    </div>
+
+    <script src="static/js/api-client.js"></script>
+    <script src="static/js/app.js"></script>
+</body>
+</html>

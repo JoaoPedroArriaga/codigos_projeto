@@ -38,7 +38,7 @@ deactivate () {
 # unset irrelevant variables
 deactivate nondestructive
 
-VIRTUAL_ENV="C:\Users\Joaop\Documents\Faculdade\Interoperabilidade\Projeto\projeto-estoque-farmacia\venv"
+VIRTUAL_ENV="C:\Users\Joaop\Documents\Faculdade\Interoperabilidade\Projeto\codigos_projeto\projeto-estoque-farmacia\venv"
 export VIRTUAL_ENV
 
 _OLD_VIRTUAL_PATH="$PATH"

@@ -4,7 +4,7 @@ import time
 import subprocess
 from pathlib import Path
 
-BASE = Path(r"C:\Users\Joaop\Documents\Faculdade\Interoperabilidade\Projeto")
+BASE = Path(r"C:\Users\Joaop\Documents\Faculdade\Interoperabilidade\Projeto\codigos_projeto")
 CSV_DIR = BASE / "projeto-estoque-farmacia"
 XML_DIR = BASE / "projeto_estoque-farmacia_xml"
 
@@ -30,11 +30,19 @@ def contar_arquivos_por_pasta(projeto_dir, extensao):
     return resultados
 
 def executar_teste(script_path, projeto_dir):
+    """Executa script com PYTHONPATH configurado corretamente"""
     original_dir = os.getcwd()
     os.chdir(projeto_dir)
     
     env = os.environ.copy()
     env["PYTHONIOENCODING"] = "utf-8"
+    
+    # Adiciona o diretório do projeto ao PYTHONPATH
+    pythonpath = env.get('PYTHONPATH', '')
+    if pythonpath:
+        env['PYTHONPATH'] = f"{projeto_dir};{pythonpath}"
+    else:
+        env['PYTHONPATH'] = str(projeto_dir)
     
     start = time.perf_counter()
     try:
@@ -94,6 +102,7 @@ def main():
     print("COMPARADOR PADRONIZADO CSV vs XML")
     print("=" * 70)
     
+    # Usando os scripts padronizados que funcionaram no teste manual
     script_csv = CSV_DIR / "scripts" / "teste_padronizado_csv.py"
     script_xml = XML_DIR / "scripts" / "teste_padronizado_xml.py"
     
@@ -162,7 +171,7 @@ def main():
     diff_pct_total = (diff_total / total_csv * 100) if total_csv > 0 else 0
     print(f"   {'TOTAL':<25} {total_csv:>11,}b {total_xml:>11,}b {diff_pct_total:>+11.1f}%")
     
-    # 3. QUANTIDADE DE ARQUIVOS
+    # 3. QUANTIDADE DE ARQUIVOS (CORRIGIDO)
     print("\n[3] QUANTIDADE DE ARQUIVOS:")
     print(f"   {'Tipo':<25} {'CSV':>8} {'XML':>8}")
     print("   " + "-" * 43)
@@ -192,8 +201,8 @@ def main():
         tempo_xml = tempos_xml.get('total', 0)
         diff_tempo = (tempo_xml / tempo_csv - 1) * 100 if tempo_csv > 0 else 0
         
-        print(f"\n   Velocidade: XML e {diff_tempo:+.1f}% mais lento")
-        print(f"   Tamanho:    XML e {diff_pct_total:+.1f}% maior")
+        print(f"\n   Velocidade: XML é {diff_tempo:+.1f}% {'mais lento' if diff_tempo > 0 else 'mais rapido'}")
+        print(f"   Tamanho:    XML é {diff_pct_total:+.1f}% {'maior' if diff_pct_total > 0 else 'menor'}")
         print(f"   Arquivos:   XML gera {total_qtd_xml - total_qtd_csv:+d} arquivos")
     
     print("\n[OK] Comparacao concluida!")

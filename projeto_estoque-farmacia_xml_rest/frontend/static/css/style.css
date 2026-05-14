@@ -1,0 +1,545 @@
+/* ============================================
+   SISTEMA DE ESTOQUE E FARMÁCIA - CSS
+   ============================================ */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --primary: #667eea;
+    --primary-dark: #764ba2;
+    --success: #43e97b;
+    --success-dark: #38f9d7;
+    --danger: #f5576c;
+    --danger-dark: #f093fb;
+    --warning: #ffa502;
+    --info: #4dd9ff;
+    --dark: #2c3e50;
+    --light: #ecf0f1;
+    --white: #ffffff;
+    --gray: #95a5a6;
+    --border: #e0e0e0;
+    --shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    --transition: all 0.3s ease;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: var(--dark);
+    min-height: 100vh;
+}
+
+.container {
+    max-width: 1400px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+}
+
+/* ============================================
+   HEADER
+   ============================================ */
+
+.header {
+    background: rgba(255, 255, 255, 0.95);
+    padding: 30px 20px;
+    box-shadow: var(--shadow);
+    margin-bottom: 0;
+}
+
+.header-content {
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.header h1 {
+    font-size: 2.5rem;
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.status {
+    font-size: 0.9rem;
+    color: var(--gray);
+}
+
+.status-loading {
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+.status-connected {
+    color: var(--success);
+    font-weight: bold;
+}
+
+.status-disconnected {
+    color: var(--danger);
+    font-weight: bold;
+}
+
+@keyframes pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+}
+
+/* ============================================
+   NAVBAR
+   ============================================ */
+
+.navbar {
+    background: rgba(255, 255, 255, 0.9);
+    display: flex;
+    gap: 0;
+    padding: 0 20px;
+    border-bottom: 3px solid var(--border);
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.nav-btn {
+    flex: 1;
+    padding: 15px 20px;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--gray);
+    border-bottom: 4px solid transparent;
+    transition: var(--transition);
+}
+
+.nav-btn:hover {
+    background: rgba(102, 126, 234, 0.1);
+    color: var(--primary);
+}
+
+.nav-btn.active {
+    color: var(--primary);
+    border-bottom-color: var(--primary);
+}
+
+/* ============================================
+   MAIN CONTENT
+   ============================================ */
+
+.main-content {
+    flex: 1;
+    padding: 30px 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+    width: 100%;
+}
+
+.tab-content {
+    display: none;
+    animation: fadeIn 0.3s ease;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+}
+
+/* ============================================
+   CARDS
+   ============================================ */
+
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 30px;
+    margin-bottom: 25px;
+    box-shadow: var(--shadow);
+    transition: var(--transition);
+}
+
+.card:hover {
+    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.15);
+}
+
+.card h2 {
+    color: var(--primary);
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+    border-left: 4px solid var(--primary);
+    padding-left: 15px;
+}
+
+/* ============================================
+   FORMS
+   ============================================ */
+
+.form-group {
+    margin-bottom: 20px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: var(--dark);
+}
+
+.form-group input,
+.form-group select {
+    width: 100%;
+    padding: 12px 15px;
+    border: 2px solid var(--border);
+    border-radius: 8px;
+    font-size: 1rem;
+    transition: var(--transition);
+}
+
+.form-group input:focus,
+.form-group select:focus {
+    outline: none;
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* ============================================
+   BUTTONS
+   ============================================ */
+
+.btn {
+    padding: 12px 24px;
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: var(--transition);
+    display: inline-block;
+}
+
+.btn-primary {
+    background: linear-gradient(135deg, var(--primary) 0%, var(--primary-dark) 100%);
+    color: white;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(102, 126, 234, 0.3);
+}
+
+.btn-success {
+    background: linear-gradient(135deg, var(--success) 0%, var(--success-dark) 100%);
+    color: white;
+}
+
+.btn-success:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(67, 233, 123, 0.3);
+}
+
+.btn-danger {
+    background: linear-gradient(135deg, var(--danger) 0%, var(--danger-dark) 100%);
+    color: white;
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(245, 87, 108, 0.3);
+}
+
+.btn-secondary {
+    background: var(--light);
+    color: var(--dark);
+    border: 2px solid var(--border);
+}
+
+.btn-secondary:hover {
+    background: var(--border);
+}
+
+/* ============================================
+   RESULTADOS / ALERTAS
+   ============================================ */
+
+.resultado {
+    margin-top: 20px;
+    padding: 20px;
+    border-radius: 8px;
+    display: none;
+    animation: slideDown 0.3s ease;
+}
+
+.resultado.show {
+    display: block;
+}
+
+.resultado.success {
+    background: rgba(67, 233, 123, 0.1);
+    border-left: 4px solid var(--success);
+    color: #1e7e34;
+}
+
+.resultado.error {
+    background: rgba(245, 87, 108, 0.1);
+    border-left: 4px solid var(--danger);
+    color: #c0392b;
+}
+
+.resultado.info {
+    background: rgba(77, 217, 255, 0.1);
+    border-left: 4px solid var(--info);
+    color: #0066cc;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.resultado h3 {
+    margin-bottom: 10px;
+    font-size: 1.1rem;
+}
+
+.resultado p {
+    line-height: 1.6;
+}
+
+/* ============================================
+   GRID E TABELAS
+   ============================================ */
+
+.grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+    gap: 20px;
+}
+
+.grid-item {
+    background: var(--light);
+    padding: 20px;
+    border-radius: 8px;
+    border: 2px solid var(--border);
+    transition: var(--transition);
+}
+
+.grid-item:hover {
+    border-color: var(--primary);
+    box-shadow: 0 4px 12px rgba(102, 126, 234, 0.15);
+}
+
+.grid-item h3 {
+    color: var(--primary);
+    margin-bottom: 10px;
+}
+
+.grid-item p {
+    margin: 5px 0;
+    font-size: 0.9rem;
+    color: var(--gray);
+}
+
+.tabela {
+    overflow-x: auto;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 15px;
+}
+
+th {
+    background: var(--light);
+    padding: 15px;
+    text-align: left;
+    font-weight: 600;
+    color: var(--dark);
+    border-bottom: 2px solid var(--border);
+}
+
+td {
+    padding: 15px;
+    border-bottom: 1px solid var(--border);
+}
+
+tr:hover {
+    background: rgba(102, 126, 234, 0.05);
+}
+
+.badge {
+    display: inline-block;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 600;
+}
+
+.badge-success {
+    background: var(--success);
+    color: white;
+}
+
+.badge-danger {
+    background: var(--danger);
+    color: white;
+}
+
+.badge-warning {
+    background: var(--warning);
+    color: white;
+}
+
+/* ============================================
+   LOADING
+   ============================================ */
+
+.loading {
+    text-align: center;
+    color: var(--gray);
+    padding: 20px;
+    font-style: italic;
+}
+
+.spinner {
+    display: inline-block;
+    width: 20px;
+    height: 20px;
+    border: 3px solid rgba(102, 126, 234, 0.2);
+    border-top: 3px solid var(--primary);
+    border-radius: 50%;
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* ============================================
+   FOOTER
+   ============================================ */
+
+.footer {
+    background: rgba(0, 0, 0, 0.1);
+    color: white;
+    text-align: center;
+    padding: 30px 20px;
+    margin-top: auto;
+    border-top: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.footer p {
+    margin: 5px 0;
+}
+
+.footer a {
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    transition: var(--transition);
+}
+
+.footer a:hover {
+    text-decoration: underline;
+}
+
+/* ============================================
+   RESPONSIVIDADE
+   ============================================ */
+
+@media (max-width: 768px) {
+    .header h1 {
+        font-size: 1.8rem;
+    }
+
+    .navbar {
+        flex-direction: column;
+    }
+
+    .nav-btn {
+        padding: 12px 15px;
+        border-left: 4px solid transparent;
+        border-bottom: none;
+    }
+
+    .nav-btn.active {
+        border-left-color: var(--primary);
+        border-bottom: none;
+    }
+
+    .grid {
+        grid-template-columns: 1fr;
+    }
+
+    .main-content {
+        padding: 15px 10px;
+    }
+
+    .card {
+        padding: 20px;
+    }
+
+    table {
+        font-size: 0.85rem;
+    }
+
+    th, td {
+        padding: 10px 5px;
+    }
+}
+
+/* ============================================
+   UTILITÁRIOS
+   ============================================ */
+
+.text-center {
+    text-align: center;
+}
+
+.mt {
+    margin-top: 20px;
+}
+
+.mb {
+    margin-bottom: 20px;
+}
+
+.hidden {
+    display: none;
+}
+
+.alert {
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.alert-info {
+    background: rgba(77, 217, 255, 0.15);
+    color: #0066cc;
+    border-left: 4px solid #0066cc;
+}
+
+.alert-success {
+    background: rgba(67, 233, 123, 0.15);
+    color: #1e7e34;
+    border-left: 4px solid var(--success);
+}
+
+.alert-error {
+    background: rgba(245, 87, 108, 0.15);
+    color: #c0392b;
+    border-left: 4px solid var(--danger);
+}
