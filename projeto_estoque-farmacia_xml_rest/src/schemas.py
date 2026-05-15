@@ -2,9 +2,10 @@
 Schemas Pydantic para validação de requisições e respostas.
 Seguindo DRY e Single Responsibility.
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import date, datetime
+import re
 
 
 class MedicamentoSchema(BaseModel):
@@ -43,7 +44,15 @@ class ConsultaRequestSchema(BaseModel):
     """Schema para requisição de consulta"""
     codigo_medicamento: int = Field(..., gt=0, description="Código do medicamento")
     quantidade: int = Field(..., gt=0, description="Quantidade desejada")
-    cpf_paciente: str = Field(..., pattern=r"^\d{11}$", description="CPF com 11 dígitos")
+    cpf_paciente: str = Field(..., description="CPF com 11 dígitos")
+    
+    @field_validator('cpf_paciente')
+    @classmethod
+    def validar_cpf(cls, v: str) -> str:
+        cpf_limpo = re.sub(r'[^0-9]', '', v)
+        if len(cpf_limpo) != 11:
+            raise ValueError('CPF deve ter 11 dígitos')
+        return cpf_limpo
 
 
 class ConsultaResponseSchema(BaseModel):
@@ -53,21 +62,35 @@ class ConsultaResponseSchema(BaseModel):
     lote: Optional[str] = None
     validade: Optional[date] = None
     preco: Optional[float] = None
+    quantidade_disponivel: Optional[int] = None
     mensagem: str
 
 
 class ReservaRequestSchema(BaseModel):
-    """Schema para requisição de reserva"""
-    codigo_medicamento: int = Field(..., gt=0)
-    quantidade: int = Field(..., gt=0)
-    lote: str = Field(..., min_length=1)
-    cpf_paciente: str = Field(..., pattern=r"^\d{11}$")
+    """
+    Schema para requisição de reserva - FEFO: lote é definido pelo sistema
+    O campo lote NÃO é necessário - o sistema seleciona automaticamente
+    """
+    codigo_medicamento: int = Field(..., gt=0, description="Código do medicamento")
+    quantidade: int = Field(..., gt=0, description="Quantidade desejada")
+    cpf_paciente: str = Field(..., description="CPF com 11 dígitos")
+    
+    @field_validator('cpf_paciente')
+    @classmethod
+    def validar_cpf(cls, v: str) -> str:
+        cpf_limpo = re.sub(r'[^0-9]', '', v)
+        if len(cpf_limpo) != 11:
+            raise ValueError('CPF deve ter 11 dígitos')
+        return cpf_limpo
 
 
 class ReservaResponseSchema(BaseModel):
-    """Schema de resposta de reserva"""
+    """Schema de resposta de reserva com informações do lote selecionado via FEFO"""
     success: bool
     id_reserva: Optional[str] = None
+    lote_selecionado: Optional[str] = Field(None, description="Lote selecionado automaticamente pelo FEFO")
+    data_validade: Optional[date] = Field(None, description="Data de validade do lote selecionado")
+    preco: Optional[float] = Field(None, description="Preço do medicamento")
     mensagem: str
     timestamp: datetime
 

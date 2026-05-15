@@ -3,8 +3,126 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sistema de Estoque e Farmácia</title>
-    <link rel="stylesheet" href="static/css/style.css">
+    <title>Sistema de Estoque e Farmácia - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        /* Estilos adicionais para melhor experiência */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #333;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 8px;
+            z-index: 1000;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .toast.success { background: #28a745; }
+        .toast.error { background: #dc3545; }
+        .toast.info { background: #17a2b8; }
+        
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            max-width: 500px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #eee;
+        }
+        
+        .modal-close {
+            cursor: pointer;
+            font-size: 24px;
+            color: #999;
+        }
+        
+        .modal-close:hover {
+            color: #333;
+        }
+        
+        .filtro-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+        
+        .filtro-group input, .filtro-group select {
+            flex: 1;
+            min-width: 150px;
+        }
+        
+        .btn-sm {
+            padding: 8px 16px;
+            font-size: 0.85rem;
+        }
+        
+        .estatisticas {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .estatistica-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 12px;
+            text-align: center;
+        }
+        
+        .estatistica-card h3 {
+            font-size: 0.9rem;
+            margin-bottom: 10px;
+            opacity: 0.9;
+        }
+        
+        .estatistica-card .valor {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        
+        @media (max-width: 768px) {
+            .estatisticas {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 </head>
 <body>
     <div class="container">
@@ -12,16 +130,17 @@
         <header class="header">
             <div class="header-content">
                 <h1>🏥 Sistema de Estoque e Farmácia</h1>
-                <p class="status">Status: <span id="api-status" class="status-loading">Conectando...</span></p>
+                <p class="status">Status API: <span id="api-status" class="status-loading">Conectando...</span></p>
             </div>
         </header>
 
         <!-- Navigation -->
         <nav class="navbar">
-            <button class="nav-btn active" data-tab="consultas">Consultas</button>
-            <button class="nav-btn" data-tab="reservas">Reservas</button>
-            <button class="nav-btn" data-tab="baixas">Baixas</button>
-            <button class="nav-btn" data-tab="estoque">Estoque</button>
+            <button class="nav-btn active" data-tab="consultas">🔍 Consultas</button>
+            <button class="nav-btn" data-tab="reservas">📝 Reservas</button>
+            <button class="nav-btn" data-tab="baixas">✅ Baixas</button>
+            <button class="nav-btn" data-tab="estoque">📦 Estoque</button>
+            <button class="nav-btn" data-tab="relatorios">📊 Relatórios</button>
         </nav>
 
         <!-- Main Content -->
@@ -33,15 +152,16 @@
                     <form id="form-consulta">
                         <div class="form-group">
                             <label for="consulta-codigo">Código do Medicamento:</label>
-                            <input type="number" id="consulta-codigo" name="codigo_medicamento" placeholder="Ex: 789123" required>
+                            <input type="number" id="consulta-codigo" placeholder="Ex: 789123" required>
                         </div>
                         <div class="form-group">
                             <label for="consulta-quantidade">Quantidade:</label>
-                            <input type="number" id="consulta-quantidade" name="quantidade" placeholder="Ex: 5" min="1" required>
+                            <input type="number" id="consulta-quantidade" placeholder="Ex: 5" min="1" required>
                         </div>
                         <div class="form-group">
-                            <label for="consulta-cpf">CPF do Paciente:</label>
-                            <input type="text" id="consulta-cpf" name="cpf_paciente" placeholder="12345678901" pattern="\d{11}" maxlength="11" required>
+                            <label for="consulta-cpf">CPF do Paciente (11 dígitos):</label>
+                            <input type="text" id="consulta-cpf" placeholder="12345678901" pattern="\d{11}" maxlength="11" required>
+                            <small>Digite apenas números, 11 dígitos</small>
                         </div>
                         <button type="submit" class="btn btn-primary">🔍 Consultar</button>
                     </form>
@@ -51,7 +171,13 @@
 
                 <!-- Lista de Medicamentos -->
                 <div class="card">
-                    <h2>💊 Medicamentos Disponíveis</h2>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h2 style="margin: 0;">💊 Medicamentos Disponíveis</h2>
+                        <span id="medicamento-view-status" style="font-size: 0.85rem; color: #667eea;"></span>
+                    </div>
+                    <div class="filtro-group">
+                        <input type="text" id="filtro-medicamento" placeholder="Filtrar medicamento..." onkeyup="Medicamentos.filtrar()">
+                    </div>
                     <div id="lista-medicamentos" class="grid">
                         <p class="loading">Carregando medicamentos...</p>
                     </div>
@@ -61,34 +187,55 @@
             <!-- Aba Reservas -->
             <section id="reservas" class="tab-content">
                 <div class="card">
-                    <h2>🎫 Criar Reserva</h2>
+                    <h2>🎫 Criar Reserva com FEFO</h2>
+                    <div class="alert alert-info" style="background: #e3f2fd; border-left: 4px solid #2196f3; padding: 15px; margin-bottom: 20px; border-radius: 8px;">
+                        <strong>ℹ️ Como funciona o FEFO (First Expiry First Out):</strong><br>
+                        O sistema automaticamente seleciona o lote com menor data de validade para reserva, 
+                        garantindo que os medicamentos mais próximos do vencimento sejam utilizados primeiro.
+                    </div>
                     <form id="form-reserva">
                         <div class="form-group">
                             <label for="reserva-codigo">Código do Medicamento:</label>
-                            <input type="number" id="reserva-codigo" name="codigo_medicamento" placeholder="Ex: 789123" required>
+                            <input type="number" id="reserva-codigo" placeholder="Ex: 789123" required>
+                            <small>Digite o código do medicamento desejado</small>
                         </div>
                         <div class="form-group">
                             <label for="reserva-quantidade">Quantidade:</label>
-                            <input type="number" id="reserva-quantidade" name="quantidade" placeholder="Ex: 5" min="1" required>
+                            <input type="number" id="reserva-quantidade" placeholder="Ex: 5" min="1" required>
                         </div>
                         <div class="form-group">
-                            <label for="reserva-lote">Número do Lote:</label>
-                            <input type="text" id="reserva-lote" name="lote" placeholder="Ex: LOTE123" required>
+                            <label for="reserva-cpf">CPF do Paciente (11 dígitos):</label>
+                            <input type="text" id="reserva-cpf" placeholder="12345678901" pattern="\d{11}" maxlength="11" required>
+                            <small>Digite apenas números</small>
                         </div>
-                        <div class="form-group">
-                            <label for="reserva-cpf">CPF do Paciente:</label>
-                            <input type="text" id="reserva-cpf" name="cpf_paciente" placeholder="12345678901" pattern="\d{11}" maxlength="11" required>
-                        </div>
-                        <button type="submit" class="btn btn-primary">✅ Criar Reserva</button>
+                        <button type="submit" class="btn btn-primary">✅ Confirmar Reserva (FEFO)</button>
+                        <button type="button" class="btn btn-secondary" onclick="Reservas.verificarLotesDisponiveis(document.getElementById('reserva-codigo').value)">
+                            🔍 Ver Lotes Disponíveis
+                        </button>
                     </form>
 
                     <div id="resultado-reserva" class="resultado"></div>
                 </div>
 
+                <!-- Pré-consulta rápida FEFO -->
+                <div class="card">
+                    <h2>🔍 Verificar Disponibilidade Antes de Reservar</h2>
+                    <p><small>Consulte qual lote será reservado pelo sistema FEFO</small></p>
+                    <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                        <input type="number" id="preconsulta-codigo" placeholder="Código do medicamento">
+                        <input type="number" id="preconsulta-quantidade" placeholder="Quantidade" min="1">
+                        <button class="btn btn-secondary" onclick="verificarPreReserva()">Consultar FEFO</button>
+                    </div>
+                    <div id="preconsulta-resultado" class="resultado"></div>
+                </div>
+
                 <!-- Lista de Reservas Ativas -->
                 <div class="card">
                     <h2>📦 Reservas Ativas</h2>
-                    <button class="btn btn-secondary" onclick="carregarReservasAtivas()">🔄 Atualizar</button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; flex-wrap: wrap; gap: 10px;">
+                        <button class="btn btn-secondary btn-sm" onclick="carregarReservasAtivas()">🔄 Atualizar</button>
+                        <span id="total-reservas" class="badge badge-info">0 reservas</span>
+                    </div>
                     <div id="lista-reservas" class="tabela">
                         <p class="loading">Carregando reservas...</p>
                     </div>
@@ -102,19 +249,19 @@
                     <form id="form-baixa">
                         <div class="form-group">
                             <label for="baixa-codigo">Código do Medicamento:</label>
-                            <input type="number" id="baixa-codigo" name="codigo_medicamento" placeholder="Ex: 789123" required>
+                            <input type="number" id="baixa-codigo" placeholder="Ex: 789123" required>
                         </div>
                         <div class="form-group">
                             <label for="baixa-quantidade">Quantidade:</label>
-                            <input type="number" id="baixa-quantidade" name="quantidade" placeholder="Ex: 5" min="1" required>
+                            <input type="number" id="baixa-quantidade" placeholder="Ex: 5" min="1" required>
                         </div>
                         <div class="form-group">
                             <label for="baixa-lote">Número do Lote:</label>
-                            <input type="text" id="baixa-lote" name="lote" placeholder="Ex: LOTE123" required>
+                            <input type="text" id="baixa-lote" placeholder="Ex: LOTE123" required>
                         </div>
                         <div class="form-group">
                             <label for="baixa-motivo">Motivo (opcional):</label>
-                            <input type="text" id="baixa-motivo" name="motivo" placeholder="Ex: Dispensado ao paciente">
+                            <input type="text" id="baixa-motivo" placeholder="Ex: Dispensado ao paciente">
                         </div>
                         <button type="submit" class="btn btn-danger">❌ Confirmar Baixa</button>
                     </form>
@@ -138,16 +285,249 @@
                     <div id="resultado-estoque" class="resultado"></div>
                 </div>
             </section>
+
+            <!-- Aba Relatórios -->
+            <section id="relatorios" class="tab-content">
+                <div class="estatisticas" id="estatisticas">
+                    <div class="estatistica-card">
+                        <h3>Total Medicamentos</h3>
+                        <div class="valor" id="total-medicamentos">-</div>
+                    </div>
+                    <div class="estatistica-card">
+                        <h3>Reservas Ativas</h3>
+                        <div class="valor" id="total-reservas-stats">-</div>
+                    </div>
+                    <div class="estatistica-card">
+                        <h3>Estoque Total</h3>
+                        <div class="valor" id="total-estoque">-</div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>📈 Relatório de Consumo</h2>
+                    <div class="filtro-group">
+                        <input type="date" id="data-inicio" placeholder="Data início">
+                        <input type="date" id="data-fim" placeholder="Data fim">
+                        <button class="btn btn-primary btn-sm" onclick="carregarRelatorioConsumo()">Gerar Relatório</button>
+                    </div>
+                    <div id="relatorio-consumo">
+                        <p class="loading">Selecione um período para gerar o relatório</p>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <h2>📋 Logs do Sistema</h2>
+                    <div class="filtro-group">
+                        <select id="log-tipo">
+                            <option value="consultas">Consultas</option>
+                            <option value="reservas">Reservas</option>
+                            <option value="baixas">Baixas</option>
+                        </select>
+                        <button class="btn btn-secondary btn-sm" onclick="carregarLogs()">Carregar Logs</button>
+                    </div>
+                    <div id="logs-content">
+                        <p class="loading">Selecione um tipo de log</p>
+                    </div>
+                </div>
+            </section>
         </main>
 
         <!-- Footer -->
         <footer class="footer">
             <p>© 2026 Sistema de Estoque e Farmácia - v2.0.0</p>
-            <p><a href="/docs" target="_blank">📚 Documentação da API</a></p>
+            <p><a href="/docs" target="_blank">📚 Documentação da API</a> | <a href="/redoc" target="_blank">📖 ReDoc</a></p>
         </footer>
     </div>
 
-    <script src="static/js/api-client.js"></script>
-    <script src="static/js/app.js"></script>
+    <!-- Toast Container -->
+    <div id="toast-container"></div>
+
+    <!-- Modal -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="modal-title">Detalhes</h3>
+                <span class="modal-close" onclick="fecharModal()">&times;</span>
+            </div>
+            <div id="modal-body"></div>
+        </div>
+    </div>
+
+    <script src="/static/js/api-client.js"></script>
+    <script src="/static/js/app.js"></script>
+    <script>
+        // Funções adicionais para o frontend melhorado
+        
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            toast.className = `toast ${type}`;
+            toast.textContent = message;
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.remove();
+            }, 3000);
+        }
+        
+        // Modal functions
+        function abrirModal(title, content) {
+            const modal = document.getElementById('modal');
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-body').innerHTML = content;
+            modal.classList.add('active');
+        }
+        
+        function fecharModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+        
+        // Fechar modal ao clicar fora
+        document.getElementById('modal')?.addEventListener('click', (e) => {
+            if (e.target === document.getElementById('modal')) {
+                fecharModal();
+            }
+        });
+        
+        // Carregar estatísticas
+        async function carregarEstatisticas() {
+            try {
+                const medicamentos = await api.listar_medicamentos();
+                document.getElementById('total-medicamentos').textContent = medicamentos.length || 0;
+                
+                const reservas = await api.listar_reservas();
+                document.getElementById('total-reservas-stats').textContent = reservas.reservas?.length || 0;
+                
+                // Calcular estoque total (simplificado)
+                let totalEstoque = 0;
+                for (const med of medicamentos) {
+                    try {
+                        const estoque = await api.obter_estoque(med.codigo);
+                        totalEstoque += estoque.quantidade_total || 0;
+                    } catch(e) {}
+                }
+                document.getElementById('total-estoque').textContent = totalEstoque;
+            } catch(e) {
+                console.error('Erro ao carregar estatísticas:', e);
+            }
+        }
+        
+        // Carregar relatório de consumo
+        async function carregarRelatorioConsumo() {
+            const dataInicio = document.getElementById('data-inicio').value;
+            const dataFim = document.getElementById('data-fim').value;
+            
+            if (!dataInicio || !dataFim) {
+                showToast('Selecione as datas de início e fim', 'warning');
+                return;
+            }
+            
+            const container = document.getElementById('relatorio-consumo');
+            container.innerHTML = '<p class="loading">Carregando relatório...</p>';
+            
+            try {
+                // Buscar reservas como exemplo de consumo
+                const reservas = await api.listar_reservas();
+                const reservasAtivas = reservas.reservas || [];
+                
+                if (reservasAtivas.length === 0) {
+                    container.innerHTML = '<p>Nenhum consumo registrado no período</p>';
+                    return;
+                }
+                
+                let html = '<div class="tabela-wrapper"><table class="tabela-resultado"><thead><tr>';
+                html += '<th>ID Reserva</th><th>Medicamento</th><th>Quantidade</th><th>Paciente</th><th>Data</th><th>Status</th>';
+                html += '</tr></thead><tbody>';
+                
+                for (const res of reservasAtivas) {
+                    const data = new Date(res.data_reserva).toLocaleDateString('pt-BR');
+                    html += `<tr>
+                        <td>${res.id_reserva}</td>
+                        <td>${res.codigo_medicamento}</td>
+                        <td>${res.quantidade}</td>
+                        <td>${res.cpf_paciente}</td>
+                        <td>${data}</td>
+                        <td><span class="badge badge-success">${res.status}</span></td>
+                    </tr>`;
+                }
+                
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+                
+            } catch(e) {
+                container.innerHTML = `<p class="error">Erro ao carregar relatório: ${e.message}</p>`;
+                showToast('Erro ao carregar relatório', 'error');
+            }
+        }
+        
+        // Carregar logs        async function carregarLogs() {
+            const tipo = document.getElementById('log-tipo').value;
+            const container = document.getElementById('logs-content');
+            container.innerHTML = '<p class="loading">Carregando logs...</p>';
+            
+            try {
+                // Simular logs (na prática, viria da API)
+                const logs = [
+                    { id: 1, data: new Date().toISOString(), mensagem: `Log de ${tipo} - Processado com sucesso`, status: 'SUCESSO' },
+                    { id: 2, data: new Date(Date.now() - 3600000).toISOString(), mensagem: `Log de ${tipo} - Arquivo validado`, status: 'SUCESSO' },
+                ];
+                
+                let html = '<div class="tabela-wrapper"><table class="tabela-resultado"><thead><tr>';
+                html += '<th>ID</th><th>Data/Hora</th><th>Mensagem</th><th>Status</th>';
+                html += '</tr></thead><tbody>';
+                
+                for (const log of logs) {
+                    const data = new Date(log.data).toLocaleString('pt-BR');
+                    html += `<tr>
+                        <td>${log.id}</td>
+                        <td>${data}</td>
+                        <td>${log.mensagem}</td>
+                        <td><span class="badge badge-success">${log.status}</span></td>
+                    </tr>`;
+                }
+                
+                html += '</tbody></table></div>';
+                container.innerHTML = html;
+                
+            } catch(e) {
+                container.innerHTML = `<p class="error">Erro ao carregar logs: ${e.message}</p>`;
+            }
+        
+        // Atualizar Medicamentos.filter
+        Medicamentos.filtrar = function() {
+            const filtro = document.getElementById('filtro-medicamento')?.value.toLowerCase() || '';
+            const items = document.querySelectorAll('#lista-medicamentos .grid-item');
+            
+            items.forEach(item => {
+                const nome = item.querySelector('h3')?.textContent.toLowerCase() || '';
+                const codigo = item.querySelector('p')?.textContent.toLowerCase() || '';
+                
+                if (nome.includes(filtro) || codigo.includes(filtro)) {
+                    item.style.display = '';
+                } else {
+                    item.style.display = 'none';
+                }
+            });
+        };
+        
+        // Inicialização estendida
+        document.addEventListener('DOMContentLoaded', async () => {
+            await StatusAPI.verificar();
+            setInterval(() => StatusAPI.verificar(), 30000);
+            
+            GerenciadorAbas.init();
+            Consultas.init();
+            Reservas.init();
+            Baixas.init();
+            
+            await Medicamentos.carregar();
+            await carregarReservasAtivas();
+            await carregarEstatisticas();
+            
+            setInterval(() => carregarReservasAtivas(), 60000);
+            setInterval(() => carregarEstatisticas(), 30000);
+        });
+    </script>
 </body>
 </html>

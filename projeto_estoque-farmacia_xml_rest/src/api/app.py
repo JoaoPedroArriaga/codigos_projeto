@@ -36,14 +36,23 @@ app.include_router(router_reservas)
 app.include_router(router_baixas)
 
 # Servir arquivos estáticos (frontend)
-frontend_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), "frontend")
-if os.path.exists(frontend_dir):
-    app.mount("/static", StaticFiles(directory=frontend_dir), name="static")
+# __file__ = src/api/app.py, então sobe 2 níveis chega em projeto root
+project_root = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+frontend_dir = os.path.join(project_root, "frontend")
+static_dir = os.path.join(frontend_dir, "static")
+templates_dir = os.path.join(frontend_dir, "templates")
+
+# Servir arquivos CSS, JS, etc
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 
 @app.get("/")
 async def root():
-    """Página raiz redireciona para documentação ou frontend"""
+    """Serve o dashboard HTML"""
+    dashboard_path = os.path.join(templates_dir, "dashboard.html")
+    if os.path.exists(dashboard_path):
+        return FileResponse(dashboard_path, media_type="text/html")
     return {"message": "API de Estoque e Farmácia", "docs_url": "/docs"}
 
 

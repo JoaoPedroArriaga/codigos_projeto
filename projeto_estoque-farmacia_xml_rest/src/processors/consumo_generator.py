@@ -2,18 +2,22 @@
 
 import os
 from datetime import date
-from lxml import etree
+from dotenv import load_dotenv
 from src.config.database import db
 from src.utils.xml_utils import gerar_nome_arquivo_xml, escrever_xml
 from src.utils.hash_utils import adicionar_assinatura
-from dotenv import load_dotenv
+from src.utils.xml_normalizer import XMLNormalizer, XMLBuilder
 
 load_dotenv()
+
 
 class ConsumoGenerator:
     
     @staticmethod
     def gerar(p_data=None):
+        """
+        Gera relatório de consumo XML no formato correto seguindo o XSD
+        """
         if p_data is None:
             p_data = date.today()
         
@@ -33,55 +37,38 @@ class ConsumoGenerator:
             print(f"   Nenhum novo item para consolidar em {p_data}")
             return False
         
+        # Preparar itens no formato correto
+        itens_normalizados = []
+        for item in novos_itens:
+            item_dict = {
+                'id_prescricao': item['id_prescricao'],
+                'cpf_paciente': item['cpf_paciente'],
+                'codigo_medicamento': item['codigo_medicamento'],
+                'quantidade': float(item['quantidade']),
+                'unidade': item.get('unidade', 'CAIXA'),
+                'preco_total': float(item['preco_total']),
+                'data_uso': item['data_uso']
+            }
+            itens_normalizados.append(item_dict)
+        
+        # Normalizar para XML (campos no formato do XSD consumo.xsd)
+        itens_xml = XMLNormalizer.normalizar_para_consumo(itens_normalizados)
+        
+        # Construir XML usando o builder
+        root = XMLBuilder.construir_consumo(itens_xml)
+        
+        # Adicionar assinatura como último elemento
+        adicionar_assinatura(root, 'GRUPO_3')
+        
         nome_arquivo = gerar_nome_arquivo_xml('CONSUMO')
         data_dir = os.getenv('DATA_DIR', 'data')
         pasta_consumos = os.getenv('PASTA_CONSUMOS', 'saida/consumos')
         caminho = os.path.join(data_dir, pasta_consumos, nome_arquivo)
         
-        # Se arquivo já existe, ler itens existentes
-        itens_existentes = []
-        if os.path.exists(caminho):
-            try:
-                root_existente = etree.parse(caminho).getroot()
-                for item in root_existente.findall('item'):
-                    # Pular a tag de assinatura
-                    if item.tag == 'assinatura':
-                        continue
-                    item_dict = {}
-                    for child in item:
-                        item_dict[child.tag] = child.text
-                    itens_existentes.append(item_dict)
-                print(f"   📖 Lidos {len(itens_existentes)} itens existentes")
-            except Exception as e:
-                print(f"   ⚠️ Erro ao ler arquivo existente: {e}")
+        # Garantir diretório
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
         
-        # Preparar novos itens
-        novos_itens_normalizados = []
-        for item in novos_itens:
-            item_dict = {
-                'prescricao': str(item['id_prescricao']),
-                'cpf': str(item['cpf_paciente']),
-                'codigo_medicamento': str(item['codigo_medicamento']),
-                'quantidade': f"{item['quantidade']:.3f}",
-                'unidade': item['unidade'],
-                'preco_total': f"{item['preco_total']:.2f}",
-                'data_uso': str(item['data_uso'])
-            }
-            novos_itens_normalizados.append(item_dict)
-        
-        # Combinar (append - adiciona no final)
-        todos_itens = itens_existentes + novos_itens_normalizados
-        
-        # Criar XML
-        root = etree.Element('consumos')
-        for item in todos_itens:
-            item_elem = etree.SubElement(root, 'item')
-            for campo, valor in item.items():
-                etree.SubElement(item_elem, campo).text = valor
-        
-        # Adicionar assinatura (grupo G3)
-        adicionar_assinatura(root, 'GRUPO_3')
-        
+        # Salvar XML
         escrever_xml(caminho, root)
         
         # Marcar como enviados
@@ -92,19 +79,15 @@ class ConsumoGenerator:
             (p_data,)
         )
         
-        total_itens = len(todos_itens)
-        total_valor_novos = sum(float(i['preco_total']) for i in novos_itens)
-        
+        # Registrar log
+        total_valor = sum(float(i['preco_total']) for i in novos_itens)
         db.execute(
             """INSERT INTO logs_consumos 
                (arquivo_nome, data_consumo, total_itens, total_valor)
                VALUES (%s, %s, %s, %s)""",
-            (nome_arquivo, p_data, total_itens, total_valor_novos)
+            (nome_arquivo, p_data, len(novos_itens), total_valor)
         )
         
-        print(f"✅ Relatório gerado com assinatura: {caminho}")
-        print(f"   Total de itens no arquivo: {total_itens}")
-        print(f"   Itens novos adicionados: {len(novos_itens)}")
-        print(f"   Valor total dos novos: R$ {total_valor_novos:.2f}")
-        
+        print(f"✅ Relatório gerado: {caminho}")
+        print(f"   Itens: {len(novos_itens)}, Valor Total: R$ {total_valor:.2f}")
         return True

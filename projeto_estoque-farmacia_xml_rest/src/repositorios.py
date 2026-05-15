@@ -123,6 +123,36 @@ class RepositorioLote(RepositorioBase):
             fetch_one=True
         )
     
+    def buscar_disponivel_fefo(self, codigo_medicamento: int, quantidade: int) -> Optional[Dict[str, Any]]:
+        """
+        Busca lote disponível seguindo FEFO (First Expiry First Out)
+        Retorna o lote com menor data de validade que atende a quantidade
+        """
+        return self.db.execute(
+            """SELECT * FROM lotes 
+               WHERE codigo_medicamento = %s 
+                 AND quantidade_atual >= %s 
+                 AND data_validade >= CURRENT_DATE 
+               ORDER BY data_validade ASC 
+               LIMIT 1""",
+            (codigo_medicamento, quantidade),
+            fetch_one=True
+        )
+    
+    def listar_disponiveis_fefo(self, codigo_medicamento: int) -> List[Dict[str, Any]]:
+        """
+        Lista todos os lotes disponíveis ordenados por FEFO
+        """
+        return self.db.execute(
+            """SELECT * FROM lotes 
+               WHERE codigo_medicamento = %s 
+                 AND quantidade_atual > 0 
+                 AND data_validade >= CURRENT_DATE 
+               ORDER BY data_validade ASC""",
+            (codigo_medicamento,),
+            fetch_all=True
+        )
+    
     def buscar_por_numero(self, codigo_medicamento: int, numero_lote: str) -> Optional[Dict[str, Any]]:
         return self.db.execute(
             """SELECT * FROM lotes 
@@ -167,7 +197,7 @@ class RepositorioReserva(RepositorioBase):
     
     def listar_todos(self) -> List[Dict[str, Any]]:
         return self.db.execute(
-            "SELECT * FROM reservas_ativas ORDER BY data_criacao DESC",
+            "SELECT * FROM reservas_ativas ORDER BY data_reserva DESC",
             fetch_all=True
         )
     
@@ -181,19 +211,20 @@ class RepositorioReserva(RepositorioBase):
     def listar_ativas(self) -> List[Dict[str, Any]]:
         return self.db.execute(
             """SELECT * FROM reservas_ativas 
-               WHERE status = 'ativa' 
-               ORDER BY data_criacao DESC""",
+               WHERE status = 'ativa' OR status = 'RESERVADO'
+               ORDER BY data_reserva DESC""",
             fetch_all=True
         )
     
     def criar(self, dados: Dict[str, Any]) -> int:
         resultado = self.db.execute(
             """INSERT INTO reservas_ativas 
-               (codigo_medicamento, quantidade, numero_lote, cpf_paciente, status) 
-               VALUES (%s, %s, %s, %s, %s) 
+               (codigo_medicamento, quantidade, lote, id_lote, cpf_paciente, id_prescricao, status) 
+               VALUES (%s, %s, %s, %s, %s, %s, %s) 
                RETURNING id_reserva""",
             (dados['codigo_medicamento'], dados['quantidade'],
-             dados['numero_lote'], dados['cpf_paciente'], 'ativa'),
+             dados['numero_lote'], dados.get('id_lote', 0), dados['cpf_paciente'], 
+             dados.get('id_prescricao', 0), dados.get('status', 'ativa')),
             fetch_one=True
         )
         return resultado['id_reserva'] if resultado else None

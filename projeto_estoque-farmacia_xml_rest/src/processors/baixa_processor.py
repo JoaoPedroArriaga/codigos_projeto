@@ -1,7 +1,10 @@
 """
 Processador de arquivos XML de baixa com validação de assinatura
+CORRIGIDO para seguir XSD e validar campos obrigatórios
 """
 import os
+import re
+from datetime import datetime
 from src.utils.xml_utils import mover_para_processados, ler_xml
 from src.utils.xml_validator import validador
 from src.utils.xml_normalizer import XMLNormalizer
@@ -11,9 +14,21 @@ from src.models.lote import Lote
 from src.models.reserva_ativa import ReservaAtiva
 from src.config.database import db
 
+
 class BaixaProcessor:
     
     XSD = 'baixa.xsd'
+    
+    @staticmethod
+    def validar_cpf(cpf: str) -> bool:
+        """Valida CPF (11 dígitos)"""
+        cpf_limpo = re.sub(r'[^0-9]', '', str(cpf))
+        return len(cpf_limpo) == 11 and cpf_limpo.isdigit()
+    
+    @staticmethod
+    def validar_data_uso(data_uso: int) -> bool:
+        """Valida data_uso no formato DDMMYY (6 dígitos)"""
+        return 1 <= data_uso <= 311299  # Validação básica
     
     @staticmethod
     def processar(caminho_arquivo):
@@ -52,17 +67,54 @@ class BaixaProcessor:
             mover_para_processados(caminho_arquivo, 'baixas_erro')
             return False
         
-        # 5. Iniciar transação
+        # 5. Validar campos obrigatórios
+        for idx, item in enumerate(dados):
+            missing_fields = []
+            if 'id_prescricao' not in item:
+                missing_fields.append('prescricao')
+            if 'cpf_paciente' not in item:
+                missing_fields.append('cpf')
+            if 'codigo_medicamento' not in item:
+                missing_fields.append('codigo_medicamento')
+            if 'lote' not in item:
+                missing_fields.append('lote')
+            if 'quantidade' not in item:
+                missing_fields.append('quantidade')
+            if 'data_uso' not in item:
+                missing_fields.append('data_uso')
+            
+            if missing_fields:
+                print(f"   ❌ Item {idx+1} faltando campos: {missing_fields}")
+                mover_para_processados(caminho_arquivo, 'baixas_erro')
+                return False
+            
+            # Validar CPF
+            if not BaixaProcessor.validar_cpf(item['cpf_paciente']):
+                print(f"   ❌ CPF inválido: {item['cpf_paciente']}")
+                mover_para_processados(caminho_arquivo, 'baixas_erro')
+                return False
+            
+            # Validar quantidade > 0
+            if item['quantidade'] <= 0:
+                print(f"   ❌ Quantidade inválida: {item['quantidade']}")
+                mover_para_processados(caminho_arquivo, 'baixas_erro')
+                return False
+            
+            # Validar data_uso
+            if not BaixaProcessor.validar_data_uso(item['data_uso']):
+                print(f"   ⚠️ Data de uso possivelmente inválida: {item['data_uso']}")
+        
+        # 6. Processar cada baixa
         db.begin()
         
         try:
             for item in dados:
-                id_prescricao = int(item['id_prescricao'])
-                cpf_paciente = int(item['cpf_paciente'])
-                codigo_medicamento = int(item['codigo_medicamento'])
-                quantidade = float(item['quantidade'])
+                id_prescricao = item['id_prescricao']
+                cpf_paciente = item['cpf_paciente']
+                codigo_medicamento = item['codigo_medicamento']
+                quantidade = item['quantidade']
                 lote_numero = item['lote']
-                data_uso = int(item['data_uso'])
+                data_uso = item['data_uso']
                 
                 # Buscar reserva ativa
                 reserva = ReservaAtiva.buscar_reserva_ativa(id_prescricao, lote_numero)
@@ -143,7 +195,7 @@ class BaixaProcessor:
                     VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                     (id_prescricao, cpf_paciente, codigo_medicamento,
                      quantidade, quantidade * float(lote['preco_venda']), data_uso,
-                     lote_numero, lote['id_lote'], log['id_log'], unidade['unidade'])
+                     lote_numero, lote['id_lote'], log['id_log'], unidade['unidade'] if unidade else 'CAIXA')
                 )
                 
                 print(f"   ✅ Baixa realizada: lote {lote_numero} - {quantidade} unidades")

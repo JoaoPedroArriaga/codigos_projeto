@@ -1,9 +1,9 @@
 """
 Endpoints da API REST usando FastAPI.
-Rotas para reservas de medicamentos.
+Rotas para reservas de medicamentos com FEFO.
 """
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from typing import List, Dict, Any
 from src.schemas import ReservaRequestSchema, ReservaResponseSchema
 from src.repositorios import RepositorioReserva, RepositorioLote, RepositorioMedicamento
 from src.casos_de_uso import CasoDeUsoReserva
@@ -38,19 +38,23 @@ async def criar_reserva(
     caso_de_uso: CasoDeUsoReserva = Depends(get_caso_de_uso_reserva)
 ):
     """
-    Cria uma nova reserva de medicamento
+    Cria uma nova reserva de medicamento usando FEFO (First Expiry First Out)
+    
+    O sistema automaticamente:
+    1. Verifica a disponibilidade do medicamento
+    2. Seleciona o lote com menor data de validade (FEFO)
+    3. Cria a reserva com esse lote
     
     Args:
-        dados: Código do medicamento, quantidade, número do lote e CPF do paciente
+        dados: Código do medicamento, quantidade e CPF do paciente
         
     Returns:
-        Confirmação da reserva com ID único
+        Confirmação da reserva com ID, lote selecionado, validade e preço
     """
     try:
-        resultado = caso_de_uso.criar_reserva(
+        resultado = caso_de_uso.criar_reserva_com_fefo(
             dados.codigo_medicamento,
             dados.quantidade,
-            dados.lote,
             dados.cpf_paciente
         )
         
@@ -84,10 +88,35 @@ async def listar_reservas_ativas(
         raise HTTPException(status_code=500, detail=f"Erro ao listar reservas: {str(e)}")
 
 
+@router.get("/lotes-disponiveis/{codigo_medicamento}")
+async def listar_lotes_disponiveis_fefo(
+    codigo_medicamento: int,
+    caso_de_uso: CasoDeUsoReserva = Depends(get_caso_de_uso_reserva)
+):
+    """
+    Lista todos os lotes disponíveis de um medicamento ordenados por FEFO
+    
+    Args:
+        codigo_medicamento: Código do medicamento
+        
+    Returns:
+        Lista de lotes ordenados por data de validade (menor primeiro)
+    """
+    try:
+        lotes = caso_de_uso.listar_lotes_disponiveis_fefo(codigo_medicamento)
+        return {
+            'codigo_medicamento': codigo_medicamento,
+            'total_lotes': len(lotes),
+            'lotes': lotes
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar lotes: {str(e)}")
+
+
 @router.get("/{id_reserva}")
 async def obter_reserva(
     id_reserva: int,
-    repo_reserva: RepositorioReserva = Depends(get_repo_reserva)
+    caso_de_uso: CasoDeUsoReserva = Depends(get_caso_de_uso_reserva)
 ):
     """
     Obtém detalhes de uma reserva específica
@@ -99,7 +128,7 @@ async def obter_reserva(
         Detalhes da reserva
     """
     try:
-        reserva = repo_reserva.buscar_por_id(id_reserva)
+        reserva = caso_de_uso.buscar_reserva_por_id(id_reserva)
         if not reserva:
             raise HTTPException(status_code=404, detail=f"Reserva {id_reserva} não encontrada")
         return reserva
@@ -115,7 +144,7 @@ async def cancelar_reserva(
     caso_de_uso: CasoDeUsoReserva = Depends(get_caso_de_uso_reserva)
 ):
     """
-    Cancela uma reserva
+    Cancela uma reserva existente
     
     Args:
         id_reserva: ID da reserva a cancelar
