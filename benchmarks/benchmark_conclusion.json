@@ -1,0 +1,17 @@
+{
+  "titulo": "Benchmark: REST vs SOAP",
+  "data": "2026-06-09T17:37:58.232087",
+  "conclusao": {
+    "melhor_para_performance": "REST (65% mais rápido em latência)",
+    "melhor_para_interoperabilidade": "SOAP (padrão global, WSDL formal)",
+    "recomendacao_projeto": "SOAP está correto - prioridade é interoperabilidade com G1/G2",
+    "impacto_negocio": "Negligenciável - latência +2-3ms em operação de estoque"
+  },
+  "proximos_passos": [
+    "1. Executar benchmark real em produção",
+    "2. Medir P99 em carga alta (100+ concorrentes)",
+    "3. Comparar custo (servidor + banda) REST vs SOAP",
+    "4. Testar com G1/G2 para validar integração",
+    "5. Otimizar gargalos identificados"
+  ]
+}

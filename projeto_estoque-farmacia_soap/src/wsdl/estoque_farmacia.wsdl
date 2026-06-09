@@ -1,0 +1,512 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<definitions xmlns="http://schemas.xmlsoap.org/wsdl/"
+             xmlns:tns="http://estoque-farmacia.projeto.interop/v1"
+             xmlns:tipos="http://estoque-farmacia.projeto.interop/v1/tipos"
+             xmlns:soap="http://schemas.xmlsoap.org/wsdl/soap/"
+             xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+             targetNamespace="http://estoque-farmacia.projeto.interop/v1"
+             name="EstoqueFarmaciaService">
+    
+    <documentation>
+        Sistema de Estoque e Farmácia - WSDL v1.0
+        Serviço SOAP para gerenciamento de medicamentos, estoque, reservas e baixas
+        Suportado por XSDs: consulta.xsd, reserva.xsd, baixa.xsd, resposta.xsd
+        Assinatura: HMAC-SHA256 no header SOAP
+    </documentation>
+    
+    <!-- ================================================================
+         TYPES: Tipos de dados SOAP alinhados com XSDs
+         ================================================================ -->
+    <types>
+        <xsd:schema targetNamespace="http://estoque-farmacia.projeto.interop/v1/tipos">
+            
+            <!-- Tipo: Medicamento -->
+            <xsd:complexType name="MedicamentoType">
+                <xsd:sequence>
+                    <xsd:element name="id" type="xsd:int" minOccurs="0"/>
+                    <xsd:element name="codigo" type="xsd:int"/>
+                    <xsd:element name="nome" type="xsd:string"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Lote (alinhado com resposta.xsd) -->
+            <xsd:complexType name="LoteType">
+                <xsd:sequence>
+                    <xsd:element name="id_lote" type="xsd:int" minOccurs="0"/>
+                    <xsd:element name="numero_lote" type="xsd:string"/>
+                    <xsd:element name="codigo_medicamento" type="xsd:int"/>
+                    <xsd:element name="quantidade_atual" type="xsd:int"/>
+                    <xsd:element name="quantidade_inicial" type="xsd:int" minOccurs="0"/>
+                    <xsd:element name="data_validade" type="xsd:date"/>
+                    <xsd:element name="preco_venda" type="xsd:decimal"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Resposta Item (baseado em resposta.xsd) -->
+            <xsd:complexType name="RespostaItemType">
+                <xsd:sequence>
+                    <xsd:element name="codigo_medicamento" type="xsd:int"/>
+                    <xsd:element name="disponivel" type="xsd:int"/>
+                    <xsd:element name="observacao" type="xsd:string" minOccurs="0"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Resposta (baseado em resposta.xsd) -->
+            <xsd:complexType name="RespostaType">
+                <xsd:sequence>
+                    <xsd:element name="respostas" type="tipos:RespostaItemType" maxOccurs="unbounded"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Reserva (baseado em reserva.xsd) -->
+            <xsd:complexType name="ReservaType">
+                <xsd:sequence>
+                    <xsd:element name="id_reserva" type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="id_prescricao" type="xsd:int"/>
+                    <xsd:element name="cpf_paciente" type="xsd:string"/>
+                    <xsd:element name="codigo_medicamento" type="xsd:int"/>
+                    <xsd:element name="quantidade" type="xsd:int"/>
+                    <xsd:element name="numero_lote" type="xsd:string"/>
+                    <xsd:element name="data_validade" type="xsd:date" minOccurs="0"/>
+                    <xsd:element name="preco" type="xsd:decimal" minOccurs="0"/>
+                    <xsd:element name="status" type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="data_criacao" type="xsd:dateTime" minOccurs="0"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Baixa (baseado em baixa.xsd) -->
+            <xsd:complexType name="BaixaType">
+                <xsd:sequence>
+                    <xsd:element name="id_baixa" type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="id_prescricao" type="xsd:int"/>
+                    <xsd:element name="cpf_paciente" type="xsd:string"/>
+                    <xsd:element name="codigo_medicamento" type="xsd:int"/>
+                    <xsd:element name="quantidade" type="xsd:int"/>
+                    <xsd:element name="numero_lote" type="xsd:string"/>
+                    <xsd:element name="motivo" type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="data_uso" type="xsd:int" minOccurs="0"/>
+                    <xsd:element name="quantidade_restante" type="xsd:int" minOccurs="0"/>
+                    <xsd:element name="timestamp" type="xsd:dateTime" minOccurs="0"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Estoque (resposta de estoque) -->
+            <xsd:complexType name="EstoqueType">
+                <xsd:sequence>
+                    <xsd:element name="codigo_medicamento" type="xsd:int"/>
+                    <xsd:element name="nome_medicamento" type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="quantidade_total" type="xsd:int"/>
+                    <xsd:element name="lotes" type="tipos:LoteType" maxOccurs="unbounded"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Assinatura SOAP (HMAC-SHA256) -->
+            <xsd:complexType name="AssinaturaType">
+                <xsd:sequence>
+                    <xsd:element name="hash" type="xsd:string"/>
+                    <xsd:element name="timestamp" type="xsd:dateTime"/>
+                    <xsd:element name="grupo_origem" type="xsd:string"/>
+                    <xsd:element name="algoritmo" type="xsd:string"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Erro (Fault) -->
+            <xsd:complexType name="ErroType">
+                <xsd:sequence>
+                    <xsd:element name="codigo" type="xsd:string"/>
+                    <xsd:element name="mensagem" type="xsd:string"/>
+                    <xsd:element name="detalhes" type="xsd:string" minOccurs="0"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+            <!-- Tipo: Status Resultado -->
+            <xsd:complexType name="ResultadoType">
+                <xsd:sequence>
+                    <xsd:element name="success" type="xsd:boolean"/>
+                    <xsd:element name="mensagem" type="xsd:string" minOccurs="0"/>
+                    <xsd:element name="timestamp" type="xsd:dateTime"/>
+                </xsd:sequence>
+            </xsd:complexType>
+            
+        </xsd:schema>
+    </types>
+    
+    <!-- ================================================================
+         MESSAGES - REQUEST/RESPONSE dos 4 Serviços
+         ================================================================ -->
+    
+    <!-- ===== SERVICE 1: Medicamentos ===== -->
+    <message name="ListarMedicamentosRequest"/>
+    <message name="ListarMedicamentosResponse">
+        <part name="medicamentos" type="tipos:MedicamentoType" maxOccurs="unbounded"/>
+    </message>
+    
+    <message name="ObterMedicamentoRequest">
+        <part name="codigo" type="xsd:int"/>
+    </message>
+    <message name="ObterMedicamentoResponse">
+        <part name="medicamento" type="tipos:MedicamentoType"/>
+    </message>
+    
+    <message name="SincronizarMedicamentosRequest">
+        <part name="arquivo_xml" type="xsd:string"/>
+        <part name="grupo_origem" type="xsd:string"/>
+    </message>
+    <message name="SincronizarMedicamentosResponse">
+        <part name="resultado" type="tipos:ResultadoType"/>
+    </message>
+    
+    <!-- ===== SERVICE 2: Estoque ===== -->
+    <message name="ObterEstoqueRequest">
+        <part name="codigo_medicamento" type="xsd:int"/>
+    </message>
+    <message name="ObterEstoqueResponse">
+        <part name="estoque" type="tipos:EstoqueType"/>
+    </message>
+    
+    <message name="ListarLotesRequest">
+        <part name="codigo_medicamento" type="xsd:int"/>
+    </message>
+    <message name="ListarLotesResponse">
+        <part name="lotes" type="tipos:LoteType" maxOccurs="unbounded"/>
+    </message>
+    
+    <message name="ConsultarDisponibilidadeRequest">
+        <part name="codigo_medicamento" type="xsd:int"/>
+        <part name="quantidade" type="xsd:int"/>
+        <part name="cpf_paciente" type="xsd:string"/>
+    </message>
+    <message name="ConsultarDisponibilidadeResponse">
+        <part name="resposta" type="tipos:RespostaType"/>
+    </message>
+    
+    <message name="VerificarReservasRequest">
+        <part name="codigo_medicamento" type="xsd:int"/>
+    </message>
+    <message name="VerificarReservasResponse">
+        <part name="reservas" type="tipos:ReservaType" maxOccurs="unbounded"/>
+    </message>
+    
+    <message name="GerarAlertaRequest">
+        <part name="codigo_medicamento" type="xsd:int"/>
+        <part name="quantidade_minima" type="xsd:int"/>
+    </message>
+    <message name="GerarAlertaResponse">
+        <part name="resultado" type="tipos:ResultadoType"/>
+    </message>
+    
+    <!-- ===== SERVICE 3: Transacoes ===== -->
+    <message name="CriarReservaRequest">
+        <part name="codigo_medicamento" type="xsd:int"/>
+        <part name="quantidade" type="xsd:int"/>
+        <part name="cpf_paciente" type="xsd:string"/>
+    </message>
+    <message name="CriarReservaResponse">
+        <part name="reserva" type="tipos:ReservaType"/>
+    </message>
+    
+    <message name="ObterReservaRequest">
+        <part name="id_reserva" type="xsd:string"/>
+    </message>
+    <message name="ObterReservaResponse">
+        <part name="reserva" type="tipos:ReservaType"/>
+    </message>
+    
+    <message name="CancelarReservaRequest">
+        <part name="id_reserva" type="xsd:string"/>
+    </message>
+    <message name="CancelarReservaResponse">
+        <part name="resultado" type="tipos:ResultadoType"/>
+    </message>
+    
+    <message name="RegistrarBaixaRequest">
+        <part name="codigo_medicamento" type="xsd:int"/>
+        <part name="quantidade" type="xsd:int"/>
+        <part name="numero_lote" type="xsd:string"/>
+        <part name="cpf_paciente" type="xsd:string"/>
+        <part name="motivo" type="xsd:string" minOccurs="0"/>
+    </message>
+    <message name="RegistrarBaixaResponse">
+        <part name="baixa" type="tipos:BaixaType"/>
+    </message>
+    
+    <message name="ListarBaixasRequest">
+        <part name="data_inicio" type="xsd:date" minOccurs="0"/>
+        <part name="data_fim" type="xsd:date" minOccurs="0"/>
+    </message>
+    <message name="ListarBaixasResponse">
+        <part name="baixas" type="tipos:BaixaType" maxOccurs="unbounded"/>
+    </message>
+    
+    <!-- ===== SERVICE 4: Integracao ===== -->
+    <message name="GerarRelatorioConsumoRequest">
+        <part name="data_inicio" type="xsd:date" minOccurs="0"/>
+        <part name="data_fim" type="xsd:date" minOccurs="0"/>
+    </message>
+    <message name="GerarRelatorioConsumoResponse">
+        <part name="arquivo_xml" type="xsd:string"/>
+        <part name="resultado" type="tipos:ResultadoType"/>
+    </message>
+    
+    <message name="ConsultarStatusPacienteRequest">
+        <part name="cpf_paciente" type="xsd:string"/>
+    </message>
+    <message name="ConsultarStatusPacienteResponse">
+        <part name="status_financeiro" type="xsd:string"/>
+        <part name="permite_atendimento" type="xsd:boolean"/>
+    </message>
+    
+    <message name="SincronizarStatusFinanceiroRequest">
+        <part name="arquivo_xml" type="xsd:string"/>
+        <part name="grupo_origem" type="xsd:string"/>
+    </message>
+    <message name="SincronizarStatusFinanceiroResponse">
+        <part name="resultado" type="tipos:ResultadoType"/>
+    </message>
+    
+    <!-- ===== FAULT MESSAGE ===== -->
+    <message name="ErroFault">
+        <part name="erro" type="tipos:ErroType"/>
+    </message>
+    
+    <!-- ================================================================
+         PORT TYPES (Operações Abstratas)
+         ================================================================ -->
+    
+    <portType name="ServiceMedicamentosPortType">
+        <operation name="listarMedicamentos">
+            <input message="tns:ListarMedicamentosRequest"/>
+            <output message="tns:ListarMedicamentosResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="obterMedicamento">
+            <input message="tns:ObterMedicamentoRequest"/>
+            <output message="tns:ObterMedicamentoResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="sincronizarMedicamentos">
+            <input message="tns:SincronizarMedicamentosRequest"/>
+            <output message="tns:SincronizarMedicamentosResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+    </portType>
+    
+    <portType name="ServiceEstoquePortType">
+        <operation name="obterEstoque">
+            <input message="tns:ObterEstoqueRequest"/>
+            <output message="tns:ObterEstoqueResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="listarLotes">
+            <input message="tns:ListarLotesRequest"/>
+            <output message="tns:ListarLotesResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="consultarDisponibilidade">
+            <input message="tns:ConsultarDisponibilidadeRequest"/>
+            <output message="tns:ConsultarDisponibilidadeResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="verificarReservas">
+            <input message="tns:VerificarReservasRequest"/>
+            <output message="tns:VerificarReservasResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="gerarAlerta">
+            <input message="tns:GerarAlertaRequest"/>
+            <output message="tns:GerarAlertaResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+    </portType>
+    
+    <portType name="ServiceTransacoesPortType">
+        <operation name="criarReserva">
+            <input message="tns:CriarReservaRequest"/>
+            <output message="tns:CriarReservaResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="obterReserva">
+            <input message="tns:ObterReservaRequest"/>
+            <output message="tns:ObterReservaResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="cancelarReserva">
+            <input message="tns:CancelarReservaRequest"/>
+            <output message="tns:CancelarReservaResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="registrarBaixa">
+            <input message="tns:RegistrarBaixaRequest"/>
+            <output message="tns:RegistrarBaixaResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="listarBaixas">
+            <input message="tns:ListarBaixasRequest"/>
+            <output message="tns:ListarBaixasResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+    </portType>
+    
+    <portType name="ServiceIntegracaoPortType">
+        <operation name="gerarRelatorioConsumo">
+            <input message="tns:GerarRelatorioConsumoRequest"/>
+            <output message="tns:GerarRelatorioConsumoResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="consultarStatusPaciente">
+            <input message="tns:ConsultarStatusPacienteRequest"/>
+            <output message="tns:ConsultarStatusPacienteResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+        <operation name="sincronizarStatusFinanceiro">
+            <input message="tns:SincronizarStatusFinanceiroRequest"/>
+            <output message="tns:SincronizarStatusFinanceiroResponse"/>
+            <fault name="ErroFault" message="tns:ErroFault"/>
+        </operation>
+    </portType>
+    
+    <!-- ================================================================
+         BINDINGS (Protocolo SOAP 1.1)
+         ================================================================ -->
+    
+    <binding name="ServiceMedicamentosBinding" type="tns:ServiceMedicamentosPortType">
+        <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="rpc"/>
+        <operation name="listarMedicamentos">
+            <soap:operation soapAction="listarMedicamentos"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="obterMedicamento">
+            <soap:operation soapAction="obterMedicamento"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="sincronizarMedicamentos">
+            <soap:operation soapAction="sincronizarMedicamentos"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+    </binding>
+    
+    <binding name="ServiceEstoqueBinding" type="tns:ServiceEstoquePortType">
+        <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="rpc"/>
+        <operation name="obterEstoque">
+            <soap:operation soapAction="obterEstoque"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="listarLotes">
+            <soap:operation soapAction="listarLotes"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="consultarDisponibilidade">
+            <soap:operation soapAction="consultarDisponibilidade"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="verificarReservas">
+            <soap:operation soapAction="verificarReservas"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="gerarAlerta">
+            <soap:operation soapAction="gerarAlerta"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+    </binding>
+    
+    <binding name="ServiceTransacoesBinding" type="tns:ServiceTransacoesPortType">
+        <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="rpc"/>
+        <operation name="criarReserva">
+            <soap:operation soapAction="criarReserva"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="obterReserva">
+            <soap:operation soapAction="obterReserva"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="cancelarReserva">
+            <soap:operation soapAction="cancelarReserva"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="registrarBaixa">
+            <soap:operation soapAction="registrarBaixa"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="listarBaixas">
+            <soap:operation soapAction="listarBaixas"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+    </binding>
+    
+    <binding name="ServiceIntegracaoBinding" type="tns:ServiceIntegracaoPortType">
+        <soap:binding transport="http://schemas.xmlsoap.org/soap/http" style="rpc"/>
+        <operation name="gerarRelatorioConsumo">
+            <soap:operation soapAction="gerarRelatorioConsumo"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="consultarStatusPaciente">
+            <soap:operation soapAction="consultarStatusPaciente"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+        <operation name="sincronizarStatusFinanceiro">
+            <soap:operation soapAction="sincronizarStatusFinanceiro"/>
+            <input><soap:body use="literal"/></input>
+            <output><soap:body use="literal"/></output>
+            <fault name="ErroFault"><soap:fault name="ErroFault" use="literal"/></fault>
+        </operation>
+    </binding>
+    
+    <!-- ================================================================
+         SERVICES (Endpoints SOAP)
+         ================================================================ -->
+    
+    <service name="EstoqueFarmaciaService">
+        <documentation>
+            Serviço SOAP de Estoque e Farmácia
+            4 serviços: Medicamentos, Estoque, Transações, Integração
+            16 operações SOAP 1.1 com assinatura HMAC-SHA256
+        </documentation>
+        
+        <port name="ServiceMedicamentosPort" binding="tns:ServiceMedicamentosBinding">
+            <soap:address location="http://localhost:8000/soap"/>
+        </port>
+        
+        <port name="ServiceEstoquePort" binding="tns:ServiceEstoqueBinding">
+            <soap:address location="http://localhost:8000/soap"/>
+        </port>
+        
+        <port name="ServiceTransacoesPort" binding="tns:ServiceTransacoesBinding">
+            <soap:address location="http://localhost:8000/soap"/>
+        </port>
+        
+        <port name="ServiceIntegracaoPort" binding="tns:ServiceIntegracaoBinding">
+            <soap:address location="http://localhost:8000/soap"/>
+        </port>
+    </service>
+    
+</definitions>
