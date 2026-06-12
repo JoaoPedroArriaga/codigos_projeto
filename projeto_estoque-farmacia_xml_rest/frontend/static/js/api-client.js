@@ -4,7 +4,7 @@
  */
 
 class APIClient {
-    constructor(baseURL = 'http://localhost:8000') {
+    constructor(baseURL = '') {
         this.baseURL = baseURL;
         this.timeout = 10000; // 10 segundos
     }
@@ -136,6 +136,31 @@ class APIClient {
 
     async listar_lotes_disponiveis_fefo(codigo_medicamento) {
         return await this.fazer_requisicao(`/api/reservas/lotes-disponiveis/${codigo_medicamento}`);
+    }
+
+    // ==================== RELATÓRIOS (dashboard) ====================
+
+    async obter_relatorio_consumo(data_inicio, data_fim) {
+        const params = new URLSearchParams();
+        if (data_inicio) params.set('data_inicio', data_inicio);
+        if (data_fim) params.set('data_fim', data_fim);
+        return await this.fazer_requisicao(`/api/dashboard/consumo?${params.toString()}`);
+    }
+
+    async baixar_relatorio_consumo_json(data_inicio, data_fim) {
+        const params = new URLSearchParams();
+        if (data_inicio) params.set('data_inicio', data_inicio);
+        if (data_fim) params.set('data_fim', data_fim);
+        const resposta = await fetch(`/api/dashboard/consumo/json?${params.toString()}`);
+        if (!resposta.ok) {
+            const erro = await resposta.json().catch(() => ({}));
+            throw new Error(erro.detail || `HTTP ${resposta.status}`);
+        }
+        const blob = await resposta.blob();
+        const disposition = resposta.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="([^"]+)"/);
+        const nome = match ? match[1] : `CONSUMO_${data_fim || data_inicio}.json`;
+        return { blob, nome };
     }
 
     // ==================== BAIXAS ====================

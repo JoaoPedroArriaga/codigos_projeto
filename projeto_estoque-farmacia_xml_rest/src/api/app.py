@@ -1,11 +1,16 @@
 """
 Aplicação FastAPI - API REST do Sistema de Estoque e Farmácia
 """
-from fastapi import FastAPI
+from datetime import date
+from typing import Optional
+
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 import os
+
+from src.servicos.relatorio_consumo import RelatorioConsumoService
 
 # Importar rotas
 from src.api.rotas_medicamentos import router as router_medicamentos
@@ -67,6 +72,42 @@ async def health_check():
         "status": "healthy",
         "version": "2.0.0"
     }
+
+
+@app.get("/api/dashboard/consumo")
+async def dashboard_consumo(
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+):
+    """Alias do relatório de consumo para o dashboard."""
+    servico = RelatorioConsumoService()
+    relatorio, _, _ = servico.gerar_json(data_inicio, data_fim)
+    return relatorio
+
+
+@app.get("/api/dashboard/consumo/json")
+async def dashboard_consumo_json(
+    data_inicio: Optional[date] = Query(None),
+    data_fim: Optional[date] = Query(None),
+):
+    """Gera JSON de consumo, salva em data/saida/consumos/ e devolve download."""
+    servico = RelatorioConsumoService()
+    try:
+        _, nome_arquivo, conteudo, _, inicio, fim = servico.gerar_e_salvar_arquivo(
+            data_inicio, data_fim
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    return Response(
+        content=conteudo,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": f'attachment; filename="{nome_arquivo}"',
+            "X-Periodo-Inicio": inicio.isoformat(),
+            "X-Periodo-Fim": fim.isoformat(),
+        },
+    )
 
 
 @app.get("/api")

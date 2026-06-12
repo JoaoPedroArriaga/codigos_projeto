@@ -1,10 +1,16 @@
 """
 Geração do relatório de consumo em JSON para o G1 puxar via REST.
 """
+import json
+import os
 from datetime import date, datetime, timedelta
 from typing import Any
 
+from dotenv import load_dotenv
+
 from src.config.database import db
+
+load_dotenv()
 
 
 class RelatorioConsumoService:
@@ -71,6 +77,37 @@ class RelatorioConsumoService:
             "total_itens": len(itens),
             "itens": itens,
         }, inicio, fim
+
+    def _gerar_nome_arquivo_json(self) -> str:
+        return f"CONSUMO_{datetime.now().strftime('%y%m%d')}.json"
+
+    def gerar_e_salvar_arquivo(
+        self,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+    ) -> tuple[str, str, str, int, date, date]:
+        """
+        Gera relatório JSON, grava em data/saida/consumos/ e retorna metadados.
+        Não marca enviado_para_g1 — isso fica para o pull do G1 via REST.
+        """
+        relatorio, inicio, fim = self.gerar_json(data_inicio, data_fim)
+        total = relatorio["total_itens"]
+        if total == 0:
+            raise ValueError(
+                f"Nenhum item de consumo entre {inicio.isoformat()} e {fim.isoformat()}"
+            )
+
+        nome_arquivo = self._gerar_nome_arquivo_json()
+        data_dir = os.getenv("DATA_DIR", "data")
+        pasta_consumos = os.getenv("PASTA_CONSUMOS", "saida/consumos")
+        caminho = os.path.join(data_dir, pasta_consumos, nome_arquivo)
+
+        os.makedirs(os.path.dirname(caminho), exist_ok=True)
+        with open(caminho, "w", encoding="utf-8") as arquivo:
+            json.dump(relatorio, arquivo, ensure_ascii=False, indent=2)
+
+        conteudo = json.dumps(relatorio, ensure_ascii=False, indent=2)
+        return caminho, nome_arquivo, conteudo, total, inicio, fim
 
     def marcar_como_enviado(self, data_inicio: date, data_fim: date) -> None:
         db.execute(

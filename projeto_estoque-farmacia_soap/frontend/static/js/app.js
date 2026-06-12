@@ -34,6 +34,18 @@ const Util = {
         setTimeout(() => toast.remove(), 3000);
     },
 
+    exibirCampo(label, valor) {
+        const exibicao = valor === undefined || valor === null || valor === '' ? 'N/A' : valor;
+        return `<p><span class="campo-label">${label}</span><span class="campo-valor">${exibicao}</span></p>`;
+    },
+
+    escaparAttr(texto) {
+        return String(texto ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/"/g, '&quot;')
+            .replace(/</g, '&lt;');
+    },
+
     mostrarResultado(elementoId, tipo, titulo, mensagem, detalhes = null) {
         const elemento = document.getElementById(elementoId);
         if (!elemento) return;
@@ -50,20 +62,19 @@ const Util = {
                 conteudo += `<div class="card-info"><p><strong>Total:</strong> ${detalhes.quantidade_total} unidades</p></div>`;
                 conteudo += this.renderizarTabelaLotes(detalhes.lotes);
             } else if (detalhes.disponivel !== undefined) {
-                // Exibir conforme XSD resposta.xsd
                 const disponivelText = detalhes.disponivel ? '✅ SIM' : '❌ NÃO';
                 conteudo += `<div class="card-result">
-                    <p><strong>Código:</strong> ${detalhes.codigo_medicamento}</p>
-                    <p><strong>Disponível:</strong> ${disponivelText}</p>
-                    <p><strong>Observação:</strong> ${detalhes.observacao || ''}</p>
+                    ${this.exibirCampo('Código', detalhes.codigo_medicamento ?? '-')}
+                    ${this.exibirCampo('Disponível', disponivelText)}
+                    ${this.exibirCampo('Observação', detalhes.observacao || '—')}
                 </div>`;
             } else if (detalhes.id_reserva) {
                 conteudo += `<div class="card-result">
-                    <p><strong>ID Reserva:</strong> ${detalhes.id_reserva}</p>
-                    <p><strong>Código:</strong> ${detalhes.codigo_medicamento}</p>
-                    <p><strong>Quantidade:</strong> ${detalhes.quantidade}</p>
-                    <p><strong>Lote Selecionado:</strong> ${detalhes.lote_selecionado || 'N/A'}</p>
-                    <p><strong>Data:</strong> ${this.formatarData(detalhes.timestamp)}</p>
+                    ${this.exibirCampo('ID Reserva', detalhes.id_reserva)}
+                    ${this.exibirCampo('Código', detalhes.codigo_medicamento)}
+                    ${this.exibirCampo('Quantidade', detalhes.quantidade)}
+                    ${this.exibirCampo('Lote Selecionado', detalhes.lote_selecionado)}
+                    ${this.exibirCampo('Data', this.formatarData(detalhes.timestamp))}
                 </div>`;
             } else {
                 conteudo += this.renderizarCard(detalhes);
@@ -88,7 +99,7 @@ const Util = {
         colunas.forEach(col => {
             html += `<th>${this.formatarColunaHeader(col)}</th>`;
         });
-        html += '</td></thead><tbody>';
+        html += '</tr></thead><tbody>';
         
         dados.forEach(linha => {
             html += '<tr>';
@@ -108,7 +119,7 @@ const Util = {
     renderizarTabelaLotes(lotes) {
         if (!lotes || lotes.length === 0) return '';
         
-        let html = '<div class="tabela-wrapper"><table class="tabela-resultado"><thead></tr>';
+        let html = '<div class="tabela-wrapper"><table class="tabela-resultado"><thead><tr>';
         html += '<th>Lote</th><th>Quantidade Atual</th><th>Quantidade Inicial</th><th>Validade</th><th>Preço</th>';
         html += '</tr></thead><tbody>';
         
@@ -245,19 +256,27 @@ const Medicamentos = {
     renderizar(medicamentos) {
         const container = document.getElementById('lista-medicamentos');
         if (!container) return;
-        
+
+        container.classList.add('grid');
+        container.classList.remove('detalhe-panel');
         if (!medicamentos || medicamentos.length === 0) {
             container.innerHTML = '<p class="loading">Nenhum medicamento encontrado</p>';
             return;
         }
 
         container.innerHTML = medicamentos.map(med => `
-            <div class="grid-item" data-codigo="${med.codigo}" data-nome="${med.nome}">
+            <div class="grid-item" data-codigo="${med.codigo}" data-nome="${Util.escaparAttr(med.nome || '')}">
                 <h3>💊 ${med.nome || 'N/A'}</h3>
                 <p><strong>Código:</strong> ${med.codigo}</p>
-                <button class="btn btn-secondary btn-sm" onclick="Medicamentos.verDetalhes(${med.codigo}, '${med.nome}')">Ver Estoque</button>
+                <button class="btn btn-secondary btn-sm" data-codigo="${med.codigo}" data-nome="${Util.escaparAttr(med.nome || '')}" onclick="Medicamentos.verDetalhesFromBtn(this)">Ver Estoque</button>
             </div>
         `).join('');
+    },
+
+    verDetalhesFromBtn(btn) {
+        const codigo = parseInt(btn.dataset.codigo, 10);
+        const nome = btn.dataset.nome || '';
+        this.verDetalhes(codigo, nome);
     },
 
     async verDetalhes(codigo, nome) {
@@ -272,16 +291,20 @@ const Medicamentos = {
         
         try {
             const estoque = await api.obter_estoque(codigo);
-            
+
+            container.classList.remove('grid');
+            container.classList.add('detalhe-panel');
+
             let html = `
-                <div style="margin-bottom: 20px;">
+                <div class="detalhe-medicamento">
+                <div class="detalhe-toolbar">
                     <button class="btn btn-secondary btn-sm" onclick="Medicamentos.voltar()">
                         ⬅️ Voltar para lista de medicamentos
                     </button>
                 </div>
-                <h3>📊 Estoque do Medicamento: ${nome} (Código: ${codigo})</h3>
-                <div class="card-info">
-                    <p><strong>Quantidade Total em Estoque:</strong> ${estoque.quantidade_total} unidades</p>
+                <h3 class="detalhe-titulo">📊 Estoque: ${nome} <span class="detalhe-codigo">(Código ${codigo})</span></h3>
+                <div class="card-info card-info-compact">
+                    <p><strong>Quantidade total:</strong> ${estoque.quantidade_total ?? 0} unidades</p>
                 </div>
             `;
             
@@ -320,14 +343,16 @@ const Medicamentos = {
                 html += '<p class="loading">Nenhum lote cadastrado para este medicamento</p>';
             }
             
+            const nomeSeguro = encodeURIComponent(nome || '');
             html += `
-                <div style="margin-top: 20px; display: flex; gap: 10px;">
-                    <button class="btn btn-primary btn-sm" onclick="Medicamentos.verReservasPorMedicamento(${codigo}, '${nome}')">
+                <div class="detalhe-acoes">
+                    <button class="btn btn-primary btn-sm" onclick="Medicamentos.verReservasPorMedicamento(${codigo}, decodeURIComponent('${nomeSeguro}'))">
                         📋 Ver Reservas deste Medicamento
                     </button>
                     <button class="btn btn-success btn-sm" onclick="GerenciadorAbas.mudarAba('reservas'); document.getElementById('reserva-codigo').value = ${codigo}">
                         ➕ Nova Reserva
                     </button>
+                </div>
                 </div>
             `;
             
@@ -352,7 +377,10 @@ const Medicamentos = {
     voltar() {
         const container = document.getElementById('lista-medicamentos');
         if (!container) return;
-        
+
+        container.classList.add('grid');
+        container.classList.remove('detalhe-panel');
+
         if (this.ultimaBusca && this.ultimaBusca.htmlOriginal) {
             container.innerHTML = this.ultimaBusca.htmlOriginal;
             this.ultimaBusca = null;
@@ -374,7 +402,7 @@ const Medicamentos = {
             
             let html = `
                 <div style="margin-bottom: 20px;">
-                    <button class="btn btn-secondary btn-sm" onclick="Medicamentos.verDetalhes(${codigo}, '${nome}')">
+                    <button class="btn btn-secondary btn-sm" onclick="Medicamentos.verDetalhes(${codigo}, decodeURIComponent('${encodeURIComponent(nome || '')}'))">
                         ⬅️ Voltar para estoque
                     </button>
                 </div>
@@ -410,7 +438,11 @@ const Medicamentos = {
             `;
             
             const container = document.getElementById('lista-medicamentos');
-            if (container) container.innerHTML = html;
+            if (container) {
+                container.classList.remove('grid');
+                container.classList.add('detalhe-panel');
+                container.innerHTML = html;
+            }
             
         } catch (erro) {
             Util.mostrarToast(`Erro ao carregar reservas: ${erro.message}`, 'error');
@@ -516,19 +548,24 @@ const Reservas = {
             if (btnSubmit) btnSubmit.textContent = textoOriginal;
 
             if (resultado.success) {
+                const lote = resultado.lote_selecionado ?? 'N/A';
+                const idReserva = resultado.id_reserva ?? 'N/A';
                 Util.mostrarResultado('resultado-reserva', 'success',
                     '✅ Reserva Criada com Sucesso (FEFO)',
-                    `<strong>ID da Reserva:</strong> ${resultado.id_reserva}<br>
-                     <strong>Lote Selecionado:</strong> ${resultado.lote_selecionado}<br>
-                     <strong>Data de Validade:</strong> ${Util.formatarData(resultado.data_validade)}<br>
-                     <strong>Preço Unitário:</strong> ${Util.formatarMoeda(resultado.preco)}<br>
-                     <strong>Status:</strong> Ativa<br><br>
-                     ${resultado.mensagem}`,
-                    resultado
+                    `<div class="card-result">
+                        ${Util.exibirCampo('ID da Reserva', idReserva)}
+                        ${Util.exibirCampo('Medicamento', resultado.codigo_medicamento)}
+                        ${Util.exibirCampo('Quantidade', resultado.quantidade)}
+                        ${Util.exibirCampo('Lote Selecionado', lote)}
+                        ${Util.exibirCampo('Data de Validade', Util.formatarData(resultado.data_validade))}
+                        ${Util.exibirCampo('Preço Unitário', Util.formatarMoeda(resultado.preco))}
+                        ${Util.exibirCampo('Status', 'Ativa')}
+                    </div>
+                    <p class="mt">${resultado.mensagem || ''}</p>`
                 );
                 document.getElementById('form-reserva')?.reset();
                 await carregarReservasAtivas();
-                Util.mostrarToast(`Reserva criada! Lote: ${resultado.lote_selecionado} (FEFO)`, 'success');
+                Util.mostrarToast(`Reserva criada! Lote: ${lote}`, 'success');
             } else {
                 Util.mostrarResultado('resultado-reserva', 'error',
                     '❌ Erro ao Criar Reserva',
@@ -569,17 +606,40 @@ const Reservas = {
         }
 
         try {
-            const resultado = await api.listar_lotes_disponiveis_fefo(parseInt(codigo));
-            
-            if (resultado.lotes && resultado.lotes.length > 0) {
-                let mensagem = `📦 Lotes disponíveis para o medicamento ${codigo} (FEFO):\n`;
-                resultado.lotes.forEach((lote, idx) => {
-                    mensagem += `${idx + 1}. Lote ${lote.numero_lote} - ${lote.quantidade_atual} unidades - Vence: ${Util.formatarData(lote.data_validade)}\n`;
-                });
-                alert(mensagem);
-            } else {
+            const resultado = await api.listar_lotes_disponiveis_fefo(parseInt(codigo, 10));
+
+            if (!resultado.lotes || resultado.lotes.length === 0) {
                 Util.mostrarToast(`Nenhum lote disponível para o medicamento ${codigo}`, 'warning');
+                return;
             }
+
+            const linhas = resultado.lotes.map((lote, idx) => `
+                <tr>
+                    <td>${idx + 1}</td>
+                    <td><strong>${lote.numero_lote}</strong>${idx === 0 ? ' <span class="badge badge-info">FEFO</span>' : ''}</td>
+                    <td>${lote.quantidade_atual}</td>
+                    <td>${Util.formatarData(lote.data_validade)}</td>
+                    <td>${Util.formatarMoeda(lote.preco_venda ?? lote.preco)}</td>
+                </tr>
+            `).join('');
+
+            const conteudo = `
+                <p class="modal-desc">Lotes disponíveis ordenados por validade (First Expiry, First Out).</p>
+                <div class="tabela-wrapper">
+                    <table class="tabela-resultado">
+                        <thead><tr>
+                            <th>#</th>
+                            <th>Lote</th>
+                            <th>Quantidade</th>
+                            <th>Validade</th>
+                            <th>Preço</th>
+                        </tr></thead>
+                        <tbody>${linhas}</tbody>
+                    </table>
+                </div>
+            `;
+
+            abrirModal(`Lotes FEFO — Medicamento ${codigo}`, conteudo, { wide: true });
         } catch (erro) {
             Util.mostrarToast(`Erro: ${erro.message}`, 'error');
         }
@@ -609,9 +669,9 @@ async function verificarPreReserva() {
             container.innerHTML = `
                 <h3>${resultado.disponivel ? '✅ Disponível para Reserva (FEFO)' : '⚠️ Indisponível'}</h3>
                 <div class="card-result">
-                    <p><strong>Código:</strong> ${resultado.codigo_medicamento}</p>
-                    <p><strong>Disponível:</strong> ${disponivelText}</p>
-                    <p><strong>Observação:</strong> ${resultado.observacao}</p>
+                    ${Util.exibirCampo('Código', resultado.codigo_medicamento ?? codigo)}
+                    ${Util.exibirCampo('Disponível', disponivelText)}
+                    ${Util.exibirCampo('Observação', resultado.observacao || '—')}
                 </div>
                 ${resultado.disponivel ? `
                     <p><em>✅ O sistema reservará automaticamente este lote (menor data de validade - FEFO)</em></p>
@@ -648,6 +708,7 @@ async function carregarReservasAtivas() {
         }
 
         const tabela = `
+            <div class="tabela-wrapper">
             <table class="tabela-resultado">
                 <thead>
                     <tr>
@@ -676,6 +737,7 @@ async function carregarReservasAtivas() {
                     `).join('')}
                 </tbody>
             </table>
+            </div>
         `;
 
         container.innerHTML = tabela;
@@ -750,9 +812,9 @@ async function carregarEstoque() {
         const estoque = await api.obter_estoque(parseInt(codigo));
         
         const html = `
-            <h3>📊 Estoque do Medicamento ${codigo}</h3>
+            <h3>📊 Estoque do Medicamento ${codigo}${estoque.nome_medicamento ? ` — ${estoque.nome_medicamento}` : ''}</h3>
             <div class="card-info">
-                <p><strong>Quantidade Total:</strong> ${estoque.quantidade_total} unidades</p>
+                <p><strong>Quantidade Total:</strong> ${estoque.quantidade_total ?? 0} unidades</p>
             </div>
             <div class="tabela-wrapper">
                 <table class="tabela-resultado">
@@ -830,49 +892,89 @@ async function carregarEstatisticas() {
 async function carregarRelatorioConsumo() {
     const dataInicio = document.getElementById('data-inicio')?.value;
     const dataFim = document.getElementById('data-fim')?.value;
-    
+
     if (!dataInicio || !dataFim) {
         Util.mostrarToast('Selecione as datas de início e fim', 'warning');
         return;
     }
-    
+
     const container = document.getElementById('relatorio-consumo');
     if (!container) return;
-    
+
     container.innerHTML = '<p class="loading">Carregando relatório...</p>';
-    
+
     try {
-        const reservas = await api.listar_reservas();
-        const reservasAtivas = reservas.reservas || [];
-        
-        if (reservasAtivas.length === 0) {
-            container.innerHTML = '<p>Nenhum consumo registrado no período</p>';
+        const relatorio = await api.obter_relatorio_consumo(dataInicio, dataFim);
+        const itens = relatorio.itens || [];
+
+        if (itens.length === 0) {
+            container.innerHTML = `<p class="loading">Nenhum consumo entre ${relatorio.data_inicio} e ${relatorio.data_fim}</p>`;
             return;
         }
-        
-        let html = '<div class="tabela-wrapper"><table class="tabela-resultado"><thead><tr>';
-        html += '<th>ID Reserva</th><th>Medicamento</th><th>Quantidade</th><th>Paciente</th><th>Data</th><th>Status</th>';
-        html += '</tr></thead><tbody>';
-        
-        for (const res of reservasAtivas) {
-            const data = new Date(res.data_reserva).toLocaleDateString('pt-BR');
-            html += `
-                <tr>
-                    <td>${res.id_reserva}</td>
-                    <td>${res.codigo_medicamento}</td>
-                    <td>${res.quantidade}</td>
-                    <td>${res.cpf_paciente}</td>
-                    <td>${data}</td>
-                    <td><span class="badge badge-success">${res.status === 'RESERVADO' ? 'ATIVA' : res.status}</span></td>
-                </tr>`;
+
+        const totalPreco = itens.reduce((s, i) => s + (parseFloat(i.preco_total) || 0), 0);
+
+        let html = `
+            <div class="card-info card-info-compact">
+                <p><strong>Período:</strong> ${relatorio.data_inicio} a ${relatorio.data_fim}</p>
+                <p><strong>Total de itens:</strong> ${relatorio.total_itens ?? itens.length}</p>
+                <p><strong>Valor total:</strong> ${Util.formatarMoeda(totalPreco)}</p>
+            </div>
+            <div class="tabela-wrapper">
+            <table class="tabela-resultado">
+                <thead><tr>
+                    <th>Prescrição</th>
+                    <th>CPF</th>
+                    <th>Medicamento</th>
+                    <th>Qtd</th>
+                    <th>Unidade</th>
+                    <th>Preço</th>
+                    <th>Data uso</th>
+                </tr></thead>
+                <tbody>
+        `;
+
+        for (const item of itens) {
+            html += `<tr>
+                <td>${item.prescricao ?? item.id_prescricao ?? '-'}</td>
+                <td>${item.cpf ?? item.cpf_paciente ?? '-'}</td>
+                <td>${item.codigo_medicamento}</td>
+                <td>${item.quantidade}</td>
+                <td>${item.unidade || 'CAIXA'}</td>
+                <td>${Util.formatarMoeda(item.preco_total)}</td>
+                <td>${item.data_uso ?? '-'}</td>
+            </tr>`;
         }
-        
+
         html += '</tbody></table></div>';
         container.innerHTML = html;
-        
-    } catch(e) {
+        Util.mostrarToast(`${itens.length} itens de consumo carregados`, 'success');
+    } catch (e) {
         container.innerHTML = `<p class="error">Erro ao carregar relatório: ${e.message}</p>`;
-        Util.mostrarToast('Erro ao carregar relatório', 'error');
+        Util.mostrarToast('Erro ao carregar relatório de consumo', 'error');
+    }
+}
+
+async function baixarRelatorioConsumoXml() {
+    const dataInicio = document.getElementById('data-inicio')?.value;
+    const dataFim = document.getElementById('data-fim')?.value;
+
+    if (!dataInicio || !dataFim) {
+        Util.mostrarToast('Selecione as datas de início e fim', 'warning');
+        return;
+    }
+
+    try {
+        const { blob, nome } = await api.baixar_relatorio_consumo_xml(dataInicio, dataFim);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = nome;
+        link.click();
+        URL.revokeObjectURL(url);
+        Util.mostrarToast(`XML salvo: ${nome} (também em data/saida/consumos/)`, 'success');
+    } catch (e) {
+        Util.mostrarToast(e.message || 'Erro ao baixar XML de consumo', 'error');
     }
 }
 
@@ -948,19 +1050,27 @@ function showToast(message, type = 'info') {
     setTimeout(() => toast.remove(), 3000);
 }
 
-function abrirModal(title, content) {
+function abrirModal(title, content, opcoes = {}) {
     const modal = document.getElementById('modal');
     const modalTitle = document.getElementById('modal-title');
     const modalBody = document.getElementById('modal-body');
+    const modalContent = modal?.querySelector('.modal-content');
     if (modal && modalTitle && modalBody) {
         modalTitle.textContent = title;
         modalBody.innerHTML = content;
+        if (modalContent) {
+            modalContent.classList.toggle('modal-wide', Boolean(opcoes.wide));
+        }
         modal.classList.add('active');
     }
 }
 
 function fecharModal() {
     const modal = document.getElementById('modal');
+    const modalContent = modal?.querySelector('.modal-content');
+    if (modalContent) {
+        modalContent.classList.remove('modal-wide');
+    }
     if (modal) modal.classList.remove('active');
 }
 
@@ -1003,6 +1113,7 @@ window.carregarEstoque = carregarEstoque;
 window.carregarReservasAtivas = carregarReservasAtivas;
 window.carregarEstatisticas = carregarEstatisticas;
 window.carregarRelatorioConsumo = carregarRelatorioConsumo;
+window.baixarRelatorioConsumoXml = baixarRelatorioConsumoXml;
 window.carregarLogs = carregarLogs;
 window.verificarPreReserva = verificarPreReserva;
 window.fecharModal = fecharModal;

@@ -46,11 +46,14 @@ class APIClient {
         });
 
         const resposta = dados?.resposta || dados?.respostas;
-        const primeira = Array.isArray(resposta) ? resposta[0] : resposta;
+        let primeira = Array.isArray(resposta) ? resposta[0] : resposta;
+        if (primeira?.resposta) {
+            primeira = Array.isArray(primeira.resposta) ? primeira.resposta[0] : primeira.resposta;
+        }
 
         return {
-            codigo_medicamento: primeira?.codigo_medicamento,
-            disponivel: primeira?.disponivel === 1 || primeira?.disponivel === '1',
+            codigo_medicamento: primeira?.codigo_medicamento ?? codigo_medicamento,
+            disponivel: primeira?.disponivel === 1 || primeira?.disponivel === '1' || primeira?.disponivel === true,
             observacao: primeira?.observacao || ''
         };
     }
@@ -63,19 +66,32 @@ class APIClient {
     // ==================== RESERVAS ====================
 
     async criar_reserva(codigo_medicamento, quantidade, cpf_paciente) {
-        const dados = await this.soap.enviar('criarReserva', {
+        const raw = await this.soap.enviar('criarReserva', {
             codigo_medicamento: parseInt(codigo_medicamento, 10),
             quantidade: parseInt(quantidade, 10),
             cpf_paciente: String(cpf_paciente).replace(/\D/g, '')
         });
 
+        const dados = raw?.reserva && typeof raw.reserva === 'object'
+            ? { ...raw, ...raw.reserva }
+            : raw;
+
+        const lote = dados.lote_selecionado || dados.numero_lote;
+        const idReserva = dados.id_reserva ?? dados.id_prescricao;
+
         return {
-            success: true,
-            id_reserva: dados.id_reserva,
-            lote_selecionado: dados.numero_lote,
-            data_validade: dados.data_validade,
-            preco: dados.preco,
-            mensagem: `Reserva criada com sucesso! Lote ${dados.numero_lote} (FEFO)`
+            success: Boolean(idReserva),
+            id_reserva: idReserva ?? null,
+            codigo_medicamento: dados.codigo_medicamento ?? parseInt(codigo_medicamento, 10),
+            quantidade: dados.quantidade ?? parseInt(quantidade, 10),
+            cpf_paciente: dados.cpf_paciente ?? String(cpf_paciente).replace(/\D/g, ''),
+            lote_selecionado: lote ?? null,
+            data_validade: dados.data_validade ?? null,
+            preco: dados.preco ?? dados.preco_venda ?? null,
+            mensagem: dados.mensagem || (lote
+                ? `Reserva criada com sucesso! Lote ${lote} (FEFO)`
+                : 'Reserva criada com sucesso'),
+            timestamp: dados.data_criacao || dados.timestamp || new Date().toISOString(),
         };
     }
 
@@ -125,6 +141,36 @@ class APIClient {
             total_lotes: disponiveis.length,
             lotes: disponiveis
         };
+    }
+
+    // ==================== RELATÓRIOS (dashboard) ====================
+
+    async obter_relatorio_consumo(data_inicio, data_fim) {
+        const params = new URLSearchParams();
+        if (data_inicio) params.set('data_inicio', data_inicio);
+        if (data_fim) params.set('data_fim', data_fim);
+        const resposta = await fetch(`/api/dashboard/consumo?${params.toString()}`);
+        if (!resposta.ok) {
+            const erro = await resposta.json().catch(() => ({}));
+            throw new Error(erro.detail || `HTTP ${resposta.status}`);
+        }
+        return resposta.json();
+    }
+
+    async baixar_relatorio_consumo_xml(data_inicio, data_fim) {
+        const params = new URLSearchParams();
+        if (data_inicio) params.set('data_inicio', data_inicio);
+        if (data_fim) params.set('data_fim', data_fim);
+        const resposta = await fetch(`/api/dashboard/consumo/xml?${params.toString()}`);
+        if (!resposta.ok) {
+            const erro = await resposta.json().catch(() => ({}));
+            throw new Error(erro.detail || `HTTP ${resposta.status}`);
+        }
+        const blob = await resposta.blob();
+        const disposition = resposta.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="([^"]+)"/);
+        const nome = match ? match[1] : `CONSUMO_${data_fim || data_inicio}.xml`;
+        return { blob, nome };
     }
 
     // ==================== BAIXAS ====================

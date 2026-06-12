@@ -30,6 +30,12 @@ def test_gerar_json_estrutura():
     assert relatorio["total_itens"] == len(relatorio["itens"])
 
 
+def test_gerar_e_salvar_arquivo_sem_itens_levanta_erro():
+    servico = RelatorioConsumoService()
+    with pytest.raises(ValueError, match="Nenhum item de consumo"):
+        servico.gerar_e_salvar_arquivo(date(1999, 1, 1), date(1999, 1, 1))
+
+
 def test_status_financeiro_sincronizar_e_consultar():
     servico = StatusFinanceiroService()
     pacientes = [

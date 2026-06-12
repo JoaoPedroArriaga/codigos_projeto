@@ -54,6 +54,16 @@
             max-height: 80vh;
             overflow-y: auto;
         }
+
+        .modal-content.modal-wide {
+            max-width: 720px;
+        }
+
+        .modal-desc {
+            color: #666;
+            margin-bottom: 16px;
+            line-height: 1.5;
+        }
         
         .modal-header {
             display: flex;
@@ -276,7 +286,7 @@
                     <h2>📊 Consultar Estoque</h2>
                     <div class="form-group">
                         <label for="estoque-codigo">Código do Medicamento:</label>
-                        <div style="display: flex; gap: 10px;">
+                        <div class="input-row">
                             <input type="number" id="estoque-codigo" placeholder="Ex: 789123">
                             <button type="button" class="btn btn-primary" onclick="carregarEstoque()">🔍 Buscar</button>
                         </div>
@@ -305,13 +315,15 @@
                 
                 <div class="card">
                     <h2>📈 Relatório de Consumo</h2>
+                    <p class="hint-text">Consolida medicamentos <strong>baixados</strong> (entregues ao paciente). Reservas ainda não baixadas não entram no relatório.</p>
                     <div class="filtro-group">
-                        <input type="date" id="data-inicio" placeholder="Data início">
-                        <input type="date" id="data-fim" placeholder="Data fim">
-                        <button class="btn btn-primary btn-sm" onclick="carregarRelatorioConsumo()">Gerar Relatório</button>
+                        <input type="date" id="data-inicio" value="2026-04-10">
+                        <input type="date" id="data-fim" value="2026-04-10">
+                        <button type="button" class="btn btn-primary btn-sm" onclick="carregarRelatorioConsumo()">Gerar Relatório</button>
+                        <button type="button" class="btn btn-secondary btn-sm" onclick="baixarRelatorioConsumoXml()">Baixar XML</button>
                     </div>
                     <div id="relatorio-consumo">
-                        <p class="loading">Selecione um período para gerar o relatório</p>
+                        <p class="loading">Selecione o período e clique em Gerar Relatório</p>
                     </div>
                 </div>
                 
@@ -356,179 +368,5 @@
     <script src="/static/js/soap-client.js"></script>
     <script src="/static/js/api-client.js"></script>
     <script src="/static/js/app.js"></script>
-    <script>
-        // Funções adicionais para o frontend melhorado
-        
-        // Toast notification
-        function showToast(message, type = 'info') {
-            const container = document.getElementById('toast-container');
-            const toast = document.createElement('div');
-            toast.className = `toast ${type}`;
-            toast.textContent = message;
-            container.appendChild(toast);
-            
-            setTimeout(() => {
-                toast.remove();
-            }, 3000);
-        }
-        
-        // Modal functions
-        function abrirModal(title, content) {
-            const modal = document.getElementById('modal');
-            document.getElementById('modal-title').textContent = title;
-            document.getElementById('modal-body').innerHTML = content;
-            modal.classList.add('active');
-        }
-        
-        function fecharModal() {
-            document.getElementById('modal').classList.remove('active');
-        }
-        
-        // Fechar modal ao clicar fora
-        document.getElementById('modal')?.addEventListener('click', (e) => {
-            if (e.target === document.getElementById('modal')) {
-                fecharModal();
-            }
-        });
-        
-        // Carregar estatísticas
-        async function carregarEstatisticas() {
-            try {
-                const medicamentos = await api.listar_medicamentos();
-                document.getElementById('total-medicamentos').textContent = medicamentos.length || 0;
-                
-                const reservas = await api.listar_reservas();
-                document.getElementById('total-reservas-stats').textContent = reservas.reservas?.length || 0;
-                
-                // Calcular estoque total (simplificado)
-                let totalEstoque = 0;
-                for (const med of medicamentos) {
-                    try {
-                        const estoque = await api.obter_estoque(med.codigo);
-                        totalEstoque += estoque.quantidade_total || 0;
-                    } catch(e) {}
-                }
-                document.getElementById('total-estoque').textContent = totalEstoque;
-            } catch(e) {
-                console.error('Erro ao carregar estatísticas:', e);
-            }
-        }
-        
-        // Carregar relatório de consumo
-        async function carregarRelatorioConsumo() {
-            const dataInicio = document.getElementById('data-inicio').value;
-            const dataFim = document.getElementById('data-fim').value;
-            
-            if (!dataInicio || !dataFim) {
-                showToast('Selecione as datas de início e fim', 'warning');
-                return;
-            }
-            
-            const container = document.getElementById('relatorio-consumo');
-            container.innerHTML = '<p class="loading">Carregando relatório...</p>';
-            
-            try {
-                // Buscar reservas como exemplo de consumo
-                const reservas = await api.listar_reservas();
-                const reservasAtivas = reservas.reservas || [];
-                
-                if (reservasAtivas.length === 0) {
-                    container.innerHTML = '<p>Nenhum consumo registrado no período</p>';
-                    return;
-                }
-                
-                let html = '<div class="tabela-wrapper"><table class="tabela-resultado"><thead><tr>';
-                html += '<th>ID Reserva</th><th>Medicamento</th><th>Quantidade</th><th>Paciente</th><th>Data</th><th>Status</th>';
-                html += '</tr></thead><tbody>';
-                
-                for (const res of reservasAtivas) {
-                    const data = new Date(res.data_reserva).toLocaleDateString('pt-BR');
-                    html += `<tr>
-                        <td>${res.id_reserva}</td>
-                        <td>${res.codigo_medicamento}</td>
-                        <td>${res.quantidade}</td>
-                        <td>${res.cpf_paciente}</td>
-                        <td>${data}</td>
-                        <td><span class="badge badge-success">${res.status}</span></td>
-                    </tr>`;
-                }
-                
-                html += '</tbody></table></div>';
-                container.innerHTML = html;
-                
-            } catch(e) {
-                container.innerHTML = `<p class="error">Erro ao carregar relatório: ${e.message}</p>`;
-                showToast('Erro ao carregar relatório', 'error');
-            }
-        }
-        
-        // Carregar logs        async function carregarLogs() {
-            const tipo = document.getElementById('log-tipo').value;
-            const container = document.getElementById('logs-content');
-            container.innerHTML = '<p class="loading">Carregando logs...</p>';
-            
-            try {
-                // Simular logs (na prática, viria da API)
-                const logs = [
-                    { id: 1, data: new Date().toISOString(), mensagem: `Log de ${tipo} - Processado com sucesso`, status: 'SUCESSO' },
-                    { id: 2, data: new Date(Date.now() - 3600000).toISOString(), mensagem: `Log de ${tipo} - Arquivo validado`, status: 'SUCESSO' },
-                ];
-                
-                let html = '<div class="tabela-wrapper"><table class="tabela-resultado"><thead><tr>';
-                html += '<th>ID</th><th>Data/Hora</th><th>Mensagem</th><th>Status</th>';
-                html += '</tr></thead><tbody>';
-                
-                for (const log of logs) {
-                    const data = new Date(log.data).toLocaleString('pt-BR');
-                    html += `<tr>
-                        <td>${log.id}</td>
-                        <td>${data}</td>
-                        <td>${log.mensagem}</td>
-                        <td><span class="badge badge-success">${log.status}</span></td>
-                    </tr>`;
-                }
-                
-                html += '</tbody></table></div>';
-                container.innerHTML = html;
-                
-            } catch(e) {
-                container.innerHTML = `<p class="error">Erro ao carregar logs: ${e.message}</p>`;
-            }
-        
-        // Atualizar Medicamentos.filter
-        Medicamentos.filtrar = function() {
-            const filtro = document.getElementById('filtro-medicamento')?.value.toLowerCase() || '';
-            const items = document.querySelectorAll('#lista-medicamentos .grid-item');
-            
-            items.forEach(item => {
-                const nome = item.querySelector('h3')?.textContent.toLowerCase() || '';
-                const codigo = item.querySelector('p')?.textContent.toLowerCase() || '';
-                
-                if (nome.includes(filtro) || codigo.includes(filtro)) {
-                    item.style.display = '';
-                } else {
-                    item.style.display = 'none';
-                }
-            });
-        };
-        
-        // Inicialização estendida
-        document.addEventListener('DOMContentLoaded', async () => {
-            await StatusAPI.verificar();
-            setInterval(() => StatusAPI.verificar(), 30000);
-            
-            GerenciadorAbas.init();
-            Consultas.init();
-            Reservas.init();
-            Baixas.init();
-            
-            await Medicamentos.carregar();
-            await carregarReservasAtivas();
-            await carregarEstatisticas();
-            
-            setInterval(() => carregarReservasAtivas(), 60000);
-            setInterval(() => carregarEstatisticas(), 30000);
-        });
-    </script>
 </body>
 </html>
