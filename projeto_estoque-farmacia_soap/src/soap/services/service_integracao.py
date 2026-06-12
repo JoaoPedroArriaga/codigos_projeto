@@ -7,7 +7,7 @@ from datetime import datetime, date
 from lxml import etree
 
 from src.soap.types import ResultadoType
-from src.repositorios import RepositorioBaixa
+from src.servicos.relatorio_consumo import RelatorioConsumoService
 from src.config.database import db
 from src.utils.hash_utils import calcular_hmac, serializar_xml
 
@@ -16,7 +16,7 @@ class ServiceIntegracao:
     """Serviço de integração B2B (SOAP)"""
     
     def __init__(self):
-        self.repo_baixa = RepositorioBaixa(db)
+        self.relatorio_consumo = RelatorioConsumoService()
         # Cache de status financeiro (sincronizado do G1)
         self.cache_status_financeiro: Dict[str, Dict[str, Any]] = {}
     
@@ -48,59 +48,15 @@ class ServiceIntegracao:
             Exception: Se erro BD ou geração XML
         """
         try:
-            # Padrões
-            if data_fim is None:
-                data_fim = datetime.now().date()
-            if data_inicio is None:
-                from datetime import timedelta
-                data_inicio = data_fim - timedelta(days=30)
-            
-            # Query BD
-            baixas_dict = self.repo_baixa.listar_por_periodo(data_inicio, data_fim)
-            
-            # Gerar XML consumo.xsd
-            consumo_root = etree.Element('consumo')
-            
-            # Header
-            header = etree.SubElement(consumo_root, 'header')
-            etree.SubElement(header, 'data_inicio').text = data_inicio.isoformat()
-            etree.SubElement(header, 'data_fim').text = data_fim.isoformat()
-            etree.SubElement(header, 'grupo_origem').text = 'GRUPO_3'
-            etree.SubElement(header, 'timestamp').text = datetime.now().isoformat()
-            
-            # Itens de consumo
-            itens = etree.SubElement(consumo_root, 'itens')
-            for baixa in baixas_dict:
-                item = etree.SubElement(itens, 'item')
-                etree.SubElement(item, 'codigo_medicamento').text = str(baixa['codigo_medicamento'])
-                etree.SubElement(item, 'quantidade').text = str(baixa['quantidade'])
-                etree.SubElement(item, 'numero_lote').text = str(baixa['numero_lote'])
-                etree.SubElement(item, 'data_uso').text = str(baixa.get('data_uso', ''))
-                etree.SubElement(item, 'cpf_paciente').text = str(baixa.get('cpf_paciente', ''))
-                etree.SubElement(item, 'motivo').text = str(baixa.get('motivo', ''))
-            
-            # Serializar XML (sem assinatura por enquanto)
-            xml_string = serializar_xml(consumo_root)
-            
-            # Calcular HMAC-SHA256 (assinar o conteúdo dos itens)
-            hash_valor = calcular_hmac(xml_string)
-            
-            # Adicionar elemento de assinatura ao XML
-            assinatura = etree.SubElement(consumo_root, 'assinatura')
-            etree.SubElement(assinatura, 'hash').text = hash_valor
-            etree.SubElement(assinatura, 'timestamp').text = datetime.now().isoformat()
-            etree.SubElement(assinatura, 'grupo_origem').text = 'GRUPO_3'
-            etree.SubElement(assinatura, 'algoritmo').text = 'HMAC-SHA256'
-            
-            # Re-serializar com assinatura
-            xml_assinado = serializar_xml(consumo_root)
-            
+            xml_assinado, total, inicio, fim = self.relatorio_consumo.gerar_xml(data_inicio, data_fim)
+            self.relatorio_consumo.marcar_como_enviado(inicio, fim)
+
             resultado = ResultadoType(
                 success=True,
                 timestamp=datetime.now(),
-                mensagem=f"Relatório gerado: {len(baixas_dict)} itens de {data_inicio} a {data_fim}"
+                mensagem=f"Relatório gerado: {total} itens de {inicio} a {fim}"
             )
-            
+
             return xml_assinado, resultado
         
         except Exception as e:

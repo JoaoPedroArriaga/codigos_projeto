@@ -329,12 +329,66 @@ projeto_estoque-farmacia_soap/
 
 | Grupo | Papel | Operações típicas |
 |-------|-------|-------------------|
-| G1 | Financeiro / consumo | `gerarRelatorioConsumo`, `sincronizarStatusFinanceiro` |
+| G1 | Financeiro / consumo | **Puxa** `gerarRelatorioConsumo`; **envia** `sincronizarStatusFinanceiro` |
 | G2 | Prescrição / consulta | `consultarDisponibilidade`, `criarReserva` |
-| G3 | Estoque (este projeto) | Todas as operações + processamento XML |
+| G3 | Estoque (este projeto) | Expõe SOAP + consolida consumo no banco |
 | Dashboard | Interface local | Via `GRUPO_DASHBOARD` no HMAC |
 
-Mais detalhes de integração: `CONEXAO_GRUPOS.md`, `docs/WSDL_TECNICO.md`.
+### Relatório de consumo — G1 puxa no começo do dia (pull)
+
+Modelo acordado: **G3 não empurra o arquivo**; **G1 busca de manhã** o consumo do dia anterior.
+
+```
+23:00  G3 consolida baixas → banco (+ XML em data/saida/consumos/ como backup)
+08:00  G1 chama G3 e recebe o relatório pronto
+```
+
+| Protocolo | Quem chama | Endpoint | Operação / rota |
+|-----------|-----------|----------|------------------|
+| **SOAP** (este projeto) | G1 → G3 | `POST http://IP_G3:8000/soap` | `gerarRelatorioConsumo` |
+| **REST** (projeto `xml_rest`) | G1 → G3 | `GET http://IP_G3:8001/api/relatorios/consumo` | XML `consumo.xsd` + headers HMAC |
+
+**REST — headers obrigatórios:**
+
+```
+X-Grupo-Origem: GRUPO_1
+X-Hash: HMAC-SHA256 de "data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD"
+```
+
+**Exemplos (simular G1):**
+
+```bash
+# SOAP (este projeto)
+python exemplos_pull_g1.py
+
+# REST (projeto xml_rest, porta 8001)
+cd ../projeto_estoque-farmacia_xml_rest
+python exemplos_pull_g1.py
+```
+
+**Parâmetros SOAP** (período — normalmente o dia anterior):
+
+```xml
+<tns:gerarRelatorioConsumo>
+  <tns:data_inicio>2026-06-11</tns:data_inicio>
+  <tns:data_fim>2026-06-11</tns:data_fim>
+</tns:gerarRelatorioConsumo>
+```
+
+Header: `grupo_origem: GRUPO_1` + HMAC válido.
+
+**Resposta:** XML de consumo assinado em `arquivo_xml` dentro do envelope SOAP.
+
+**Teste simulando o G1:**
+
+```bash
+python exemplos_soap.py gerarRelatorioConsumo
+# ou editar SOAP_URL para o IP do G3 e usar grupo_origem GRUPO_1
+```
+
+O arquivo em `data/saida/consumos/` é **cópia local/backup** da consolidação das 23h — na integração ao vivo o G1 usa a **API**, não essa pasta.
+
+Mais detalhes: `CONEXAO_GRUPOS.md`, `docs/WSDL_TECNICO.md`.
 
 ---
 

@@ -12,6 +12,7 @@ from src.api.rotas_medicamentos import router as router_medicamentos
 from src.api.rotas_estoque import router as router_estoque
 from src.api.rotas_reservas import router as router_reservas
 from src.api.rotas_baixas import router as router_baixas
+from src.api.rotas_relatorios import router as router_relatorios
 
 # Criar aplicação
 app = FastAPI(
@@ -34,6 +35,7 @@ app.include_router(router_medicamentos)
 app.include_router(router_estoque)
 app.include_router(router_reservas)
 app.include_router(router_baixas)
+app.include_router(router_relatorios)
 
 # Servir arquivos estáticos (frontend)
 # __file__ = src/api/app.py, então sobe 2 níveis chega em projeto root
@@ -81,7 +83,8 @@ async def api_info():
             "GET /api/reservas - Listar reservas ativas",
             "GET /api/reservas/{id} - Obter reserva",
             "DELETE /api/reservas/{id} - Cancelar reserva",
-            "POST /api/baixas - Registrar baixa"
+            "POST /api/baixas - Registrar baixa",
+            "GET /api/relatorios/consumo - G1 puxa relatório de consumo (XML)"
         ],
         "documentacao": "/docs"
     }

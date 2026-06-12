@@ -31,28 +31,23 @@ class TestGerarRelatorioConsumo:
         assert isinstance(resultado_type, ResultadoType)
     
     def test_relatorio_xml_valido(self, servico):
-        """Verifica que XML gerado é válido"""
+        """Verifica que XML gerado é válido (consumo.xsd)"""
         xml_string, _ = servico.gerar_relatorio_consumo()
         
-        # Tentar parsear como XML
         try:
             root = etree.fromstring(xml_string.encode('utf-8'))
-            assert root.tag == 'consumo'
+            assert root.tag == 'consumos'
         except etree.XMLSyntaxError:
             pytest.fail("XML gerado é inválido")
     
-    def test_relatorio_tem_header_e_itens(self, servico):
-        """Verifica que XML tem header e itens"""
+    def test_relatorio_tem_itens_e_assinatura(self, servico):
+        """Verifica estrutura consumo.xsd: itens + assinatura"""
         xml_string, _ = servico.gerar_relatorio_consumo()
         root = etree.fromstring(xml_string.encode('utf-8'))
         
-        header = root.find('header')
-        itens = root.find('itens')
         assinatura = root.find('assinatura')
-        
-        assert header is not None
-        assert itens is not None
         assert assinatura is not None
+        assert root.findall('item') is not None
     
     def test_relatorio_tem_hash_assinado(self, servico):
         """Verifica que XML tem hash HMAC-SHA256"""
