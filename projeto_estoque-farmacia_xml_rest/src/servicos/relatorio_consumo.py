@@ -1,24 +1,20 @@
 """
-Geração do relatório de consumo (consumo.xsd) para o G1 puxar via SOAP ou REST.
+Geração do relatório de consumo em JSON para o G1 puxar via REST.
 """
 from datetime import date, datetime, timedelta
-from typing import Tuple
-
-from lxml import etree
+from typing import Any
 
 from src.config.database import db
-from src.utils.hash_utils import serializar_xml, adicionar_assinatura
-from src.utils.xml_normalizer import XMLNormalizer, XMLBuilder
 
 
 class RelatorioConsumoService:
-    """Monta XML de consumo assinado a partir de itens_consumo."""
+    """Monta relatório de consumo a partir de itens_consumo."""
 
     def resolver_periodo(
         self,
         data_inicio: date | None = None,
         data_fim: date | None = None,
-    ) -> Tuple[date, date]:
+    ) -> tuple[date, date]:
         if data_fim is None:
             data_fim = datetime.now().date() - timedelta(days=1)
         if data_inicio is None:
@@ -37,28 +33,44 @@ class RelatorioConsumoService:
         )
         return rows or []
 
-    def gerar_xml(self, data_inicio: date | None = None, data_fim: date | None = None) -> Tuple[str, int, date, date]:
+    def _formatar_cpf(self, valor) -> str:
+        if valor is None:
+            return ""
+        cpf = str(valor).split(".")[0]
+        return cpf.zfill(11) if cpf.isdigit() else cpf
+
+    def _formatar_item(self, row: dict) -> dict[str, Any]:
+        data_uso = row["data_uso"]
+        if hasattr(data_uso, "isoformat"):
+            data_uso = data_uso.isoformat()
+        else:
+            data_uso = str(data_uso)
+
+        return {
+            "prescricao": str(row["id_prescricao"]),
+            "cpf": self._formatar_cpf(row["cpf_paciente"]),
+            "codigo_medicamento": int(row["codigo_medicamento"]),
+            "quantidade": float(row["quantidade"]),
+            "unidade": row.get("unidade") or "CAIXA",
+            "preco_total": float(row["preco_total"]),
+            "data_uso": data_uso,
+        }
+
+    def gerar_json(
+        self,
+        data_inicio: date | None = None,
+        data_fim: date | None = None,
+    ) -> tuple[dict[str, Any], date, date]:
         inicio, fim = self.resolver_periodo(data_inicio, data_fim)
         rows = self.listar_itens(inicio, fim)
+        itens = [self._formatar_item(r) for r in rows]
 
-        itens_normalizados = [
-            {
-                'id_prescricao': r['id_prescricao'],
-                'cpf_paciente': r['cpf_paciente'],
-                'codigo_medicamento': r['codigo_medicamento'],
-                'quantidade': float(r['quantidade']),
-                'unidade': r.get('unidade') or 'CAIXA',
-                'preco_total': float(r['preco_total']),
-                'data_uso': r['data_uso'],
-            }
-            for r in rows
-        ]
-
-        itens_xml = XMLNormalizer.normalizar_para_consumo(itens_normalizados)
-        root = XMLBuilder.construir_consumo(itens_xml)
-        adicionar_assinatura(root, 'GRUPO_3')
-
-        return serializar_xml(root), len(rows), inicio, fim
+        return {
+            "data_inicio": inicio.isoformat(),
+            "data_fim": fim.isoformat(),
+            "total_itens": len(itens),
+            "itens": itens,
+        }, inicio, fim
 
     def marcar_como_enviado(self, data_inicio: date, data_fim: date) -> None:
         db.execute(

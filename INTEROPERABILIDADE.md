@@ -7,7 +7,7 @@ Dois projetos G3, **mesma regra de negócio**, protocolos diferentes:
 | `projeto_estoque-farmacia_soap` | **SOAP/XML** | **8000** | Integração formal (WSDL, G1/G2) + dashboard SOAP |
 | `projeto_estoque-farmacia_xml_rest` | **REST/JSON** | **8001** | Mesma API em JSON + integração G1 REST |
 
-Ambos usam o **mesmo PostgreSQL** e os mesmos XSDs (`consumo.xsd`, `status_financeiro.xsd`).
+Ambos usam o **mesmo PostgreSQL**. O SOAP usa XSDs (`consumo.xsd`, `status_financeiro.xsd`); o REST G1 usa **JSON**.
 
 ---
 
@@ -48,8 +48,8 @@ Ambos usam o **mesmo PostgreSQL** e os mesmos XSDs (`consumo.xsd`, `status_finan
 
 | Fluxo | Direção | SOAP (:8000) | REST (:8001) |
 |-------|---------|--------------|--------------|
-| Relatório de consumo | G1 **puxa** de manhã | `gerarRelatorioConsumo` | `GET /api/relatorios/consumo` |
-| Status financeiro | G1 **envia** | `sincronizarStatusFinanceiro` | `POST /api/integracao/status-financeiro` |
+| Relatório de consumo | G1 **puxa** de manhã | `gerarRelatorioConsumo` (XML) | `GET /api/relatorios/consumo` (JSON) |
+| Status financeiro | G1 **envia** | `sincronizarStatusFinanceiro` (XML) | `POST /api/integracao/status-financeiro` (JSON) |
 | Consultar paciente | G3 interno / G2 | `consultarStatusPaciente` | `GET /api/integracao/status-paciente/{cpf}` |
 
 ### G2 ↔ G3 (Prescrição)
@@ -91,6 +91,9 @@ Ou use o script na raiz:
 cd projeto_estoque-farmacia_soap && python exemplos_pull_g1.py
 cd projeto_estoque-farmacia_xml_rest && python exemplos_pull_g1.py
 
+# G1 envia status (REST/JSON)
+cd projeto_estoque-farmacia_xml_rest && python exemplos_push_g1_status.py
+
 # G2 consulta estoque (SOAP)
 cd projeto_estoque-farmacia_soap && python exemplos_soap.py
 
@@ -104,11 +107,11 @@ cd benchmarks && python benchmark_comparison.py
 
 | Protocolo | Mecanismo |
 |-----------|-----------|
-| SOAP | HMAC-SHA256 no `<soap:Header>` (`grupo_origem` + `hash`) |
-| REST (relatório) | Headers `X-Grupo-Origem` + `X-Hash` (HMAC da query) |
-| REST (status G1) | XML assinado internamente (`status_financeiro.xsd`) + header `X-Grupo-Origem: GRUPO_1` |
+| SOAP (G1/G2) | HMAC-SHA256 no `<soap:Header>` (`grupo_origem` + `hash`) |
+| REST (G1) | Sem autenticação adicional (REST ↔ REST na rede do projeto) |
+| REST (G2) | Sem autenticação adicional (API interna) |
 
-Chave compartilhada: `chave_secreta_compartilhada_entre_grupos_2026`
+Chave HMAC (SOAP/XML): `chave_secreta_compartilhada_entre_grupos_2026`
 
 ---
 

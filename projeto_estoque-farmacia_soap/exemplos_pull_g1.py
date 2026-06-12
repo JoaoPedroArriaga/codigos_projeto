@@ -15,12 +15,18 @@ from exemplos_soap import enviar_soap, montar_envelope
 from src.utils.hash_utils import calcular_hmac_envelope_xml
 
 GRUPO_G1 = "GRUPO_1"
+BASE_URL = "http://localhost:8000"
+
+
+def _soap_url(base: str) -> str:
+    base = base.rstrip("/")
+    return base if base.endswith("/soap") else f"{base}/soap"
 
 
 def main():
     parser = argparse.ArgumentParser(description="G1 puxa relatório de consumo (SOAP)")
     parser.add_argument("--data", help="Data do consumo (YYYY-MM-DD). Padrão: ontem")
-    parser.add_argument("--url", default=SOAP_URL, help="URL do servidor G3")
+    parser.add_argument("--url", default=BASE_URL, help="URL base do servidor G3 (ex: http://localhost:8000)")
     args = parser.parse_args()
 
     if args.data:
@@ -33,8 +39,8 @@ def main():
         "data_fim": dia.isoformat(),
     }
 
-    print(f"G1 → G3 (SOAP): gerarRelatorioConsumo")
-    soap_url = args.url.rstrip("/") + "/soap"
+    print("G1 -> G3 (SOAP): gerarRelatorioConsumo")
+    soap_url = _soap_url(args.url)
     print(f"URL: {soap_url}")
     print(f"Período: {dia} a {dia}")
     print(f"HMAC body: {calcular_hmac_envelope_xml(montar_envelope('gerarRelatorioConsumo', params, GRUPO_G1))[:16]}...")

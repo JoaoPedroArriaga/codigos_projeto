@@ -1,38 +1,33 @@
 """
-Integração G1 ↔ G3 via REST (status financeiro e consulta de paciente).
+Integração G1 ↔ G3 via REST/JSON (status financeiro e consulta de paciente).
 """
-from fastapi import APIRouter, Header, HTTPException, Request
+from fastapi import APIRouter, HTTPException
 
+from src.schemas import StatusFinanceiroRequestSchema, StatusFinanceiroResponseSchema
 from src.servicos.status_financeiro import StatusFinanceiroService
 
 router = APIRouter(prefix="/api/integracao", tags=["Integração G1"])
 _servico = StatusFinanceiroService()
+GRUPO_G1 = "GRUPO_1"
 
 
-@router.post("/status-financeiro")
-async def sincronizar_status_financeiro(
-    request: Request,
-    x_grupo_origem: str = Header(..., alias="X-Grupo-Origem"),
-):
+@router.post("/status-financeiro", response_model=StatusFinanceiroResponseSchema)
+async def sincronizar_status_financeiro(payload: StatusFinanceiroRequestSchema):
     """
-    G1 envia XML status_financeiro.xsd assinado com HMAC.
-    Equivalente SOAP: sincronizarStatusFinanceiro
+    G1 envia status financeiro em JSON.
+    Equivalente SOAP: sincronizarStatusFinanceiro (XML)
     """
-    if x_grupo_origem != "GRUPO_1":
-        raise HTTPException(status_code=403, detail="Apenas GRUPO_1 pode enviar status financeiro")
-
-    xml_body = (await request.body()).decode('utf-8')
-    if not xml_body.strip():
-        raise HTTPException(status_code=400, detail="Body XML vazio")
-
     try:
-        total, mensagem = _servico.sincronizar(xml_body, x_grupo_origem)
-        return {"success": True, "total_sincronizados": total, "mensagem": mensagem}
-    except Exception as e:
+        pacientes = [p.model_dump() for p in payload.pacientes]
+        total, mensagem = _servico.sincronizar(pacientes, GRUPO_G1)
+        return StatusFinanceiroResponseSchema(
+            success=True,
+            total_sincronizados=total,
+            mensagem=mensagem,
+        )
+    except ValueError as e:
         erro = str(e)
-        if "ASSINATURA" in erro:
-            raise HTTPException(status_code=401, detail=erro)
-        if "XML_INVALIDO" in erro:
+        if "CPF_INVALIDO" in erro or "DADOS_INVALIDOS" in erro or "LISTA_VAZIA" in erro:
             raise HTTPException(status_code=400, detail=erro)
         raise HTTPException(status_code=500, detail=erro)
 
@@ -42,7 +37,7 @@ async def consultar_status_paciente(cpf: str):
     """Consulta status financeiro sincronizado do G1. Equivalente SOAP: consultarStatusPaciente"""
     try:
         return _servico.consultar(cpf)
-    except Exception as e:
+    except ValueError as e:
         erro = str(e)
         if "CPF_INVALIDO" in erro or "PACIENTE_NAO_ENCONTRADO" in erro:
             raise HTTPException(status_code=404, detail=erro)

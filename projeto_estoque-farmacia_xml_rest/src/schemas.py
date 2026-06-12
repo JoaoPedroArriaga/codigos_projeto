@@ -127,3 +127,52 @@ class ErroResponseSchema(BaseModel):
     erro: str
     detalhes: Optional[dict] = None
     timestamp: datetime
+
+
+# --- Integração G1 (REST/JSON) ---
+
+class ItemConsumoSchema(BaseModel):
+    """Item do relatório de consumo para o G1"""
+    prescricao: str
+    cpf: str
+    codigo_medicamento: int
+    quantidade: float
+    unidade: str
+    preco_total: float
+    data_uso: str
+
+
+class RelatorioConsumoResponseSchema(BaseModel):
+    """Relatório de consumo em JSON"""
+    data_inicio: str
+    data_fim: str
+    total_itens: int
+    itens: List[ItemConsumoSchema]
+
+
+class PacienteStatusSchema(BaseModel):
+    """Status financeiro de um paciente enviado pelo G1"""
+    cpf: str = Field(..., description="CPF com 11 dígitos")
+    status: str = Field(..., min_length=1, description="Ex: ADIMPLENTE, INADIMPLENTE")
+    permite_atendimento: int = Field(0, ge=0, le=1)
+    observacao: Optional[str] = None
+
+    @field_validator("cpf")
+    @classmethod
+    def validar_cpf(cls, v: str) -> str:
+        cpf_limpo = re.sub(r"[^0-9]", "", v)
+        if len(cpf_limpo) != 11:
+            raise ValueError("CPF deve ter 11 dígitos")
+        return cpf_limpo
+
+
+class StatusFinanceiroRequestSchema(BaseModel):
+    """Payload JSON de status financeiro do G1"""
+    pacientes: List[PacienteStatusSchema] = Field(..., min_length=1)
+
+
+class StatusFinanceiroResponseSchema(BaseModel):
+    """Resposta da sincronização de status"""
+    success: bool
+    total_sincronizados: int
+    mensagem: str

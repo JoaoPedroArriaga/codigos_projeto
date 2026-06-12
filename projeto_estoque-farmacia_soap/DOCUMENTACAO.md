@@ -357,14 +357,9 @@ Modelo acordado: **G3 não empurra o arquivo**; **G1 busca de manhã** o consumo
 | Protocolo | Quem chama | Endpoint | Operação / rota |
 |-----------|-----------|----------|------------------|
 | **SOAP** (este projeto) | G1 → G3 | `POST http://IP_G3:8000/soap` | `gerarRelatorioConsumo` |
-| **REST** (projeto `xml_rest`) | G1 → G3 | `GET http://IP_G3:8001/api/relatorios/consumo` | XML `consumo.xsd` + headers HMAC |
+| **REST** (projeto `xml_rest`) | G1 → G3 | `GET http://IP_G3:8001/api/relatorios/consumo` | JSON |
 
-**REST — headers obrigatórios:**
-
-```
-X-Grupo-Origem: GRUPO_1
-X-Hash: HMAC-SHA256 de "data_inicio=YYYY-MM-DD&data_fim=YYYY-MM-DD"
-```
+**REST (G1 ↔ G1 REST):** resposta JSON; sem HMAC. Ver `projeto_estoque-farmacia_xml_rest/DOCUMENTACAO.md`.
 
 **Exemplos (simular G1):**
 

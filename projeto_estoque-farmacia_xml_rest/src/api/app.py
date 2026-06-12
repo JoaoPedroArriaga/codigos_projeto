@@ -86,8 +86,8 @@ async def api_info():
             "GET /api/reservas/{id} - Obter reserva",
             "DELETE /api/reservas/{id} - Cancelar reserva",
             "POST /api/baixas - Registrar baixa",
-            "GET /api/relatorios/consumo - G1 puxa relatório de consumo (XML)",
-            "POST /api/integracao/status-financeiro - G1 envia status financeiro (XML)",
+            "GET /api/relatorios/consumo - G1 puxa relatório de consumo (JSON)",
+            "POST /api/integracao/status-financeiro - G1 envia status financeiro (JSON)",
             "GET /api/integracao/status-paciente/{cpf} - Consultar status do G1"
         ],
         "documentacao": "/docs"
