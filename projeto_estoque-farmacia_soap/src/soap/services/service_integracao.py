@@ -8,7 +8,7 @@ from lxml import etree
 
 from src.soap.types import ResultadoType
 from src.servicos.relatorio_consumo import RelatorioConsumoService
-from src.config.database import db
+from src.servicos.status_financeiro import StatusFinanceiroService
 from src.utils.hash_utils import calcular_hmac, serializar_xml
 
 
@@ -17,8 +17,7 @@ class ServiceIntegracao:
     
     def __init__(self):
         self.relatorio_consumo = RelatorioConsumoService()
-        # Cache de status financeiro (sincronizado do G1)
-        self.cache_status_financeiro: Dict[str, Dict[str, Any]] = {}
+        self.status_financeiro = StatusFinanceiroService()
     
     # ===== OPERAÇÃO 1: gerarRelatorioConsumo (G3 → G1) =====
     def gerar_relatorio_consumo(
@@ -84,16 +83,7 @@ class ServiceIntegracao:
             Exception: Se CPF inválido ou não encontrado
         """
         try:
-            # Validar CPF
-            cpf_limpo = cpf.replace('.', '').replace('-', '')
-            if len(cpf_limpo) != 11:
-                raise Exception(f"CPF_INVALIDO: CPF deve ter 11 dígitos")
-            
-            # Procurar em cache
-            if cpf_limpo not in self.cache_status_financeiro:
-                raise Exception(f"PACIENTE_NAO_ENCONTRADO: CPF {cpf} não tem status cadastrado")
-            
-            return self.cache_status_financeiro[cpf_limpo]
+            return self.status_financeiro.consultar(cpf)
         
         except Exception as e:
             if any(err in str(e) for err in ["CPF_INVALIDO", "PACIENTE_NAO_ENCONTRADO"]):
@@ -141,65 +131,12 @@ class ServiceIntegracao:
             Exception: Se XML inválido, assinatura invalida, erro processamento
         """
         try:
-            # Parsear XML
-            root = etree.fromstring(arquivo_xml.encode('utf-8'))
-            
-            # Validar assinatura
-            assinatura_elem = root.find('assinatura')
-            if assinatura_elem is None:
-                raise Exception("ASSINATURA_FALTANDO: XML deve conter elemento <assinatura>")
-            
-            hash_recebido = assinatura_elem.findtext('hash')
-            if not hash_recebido:
-                raise Exception("ASSINATURA_INVALIDA: Elemento <hash> vazio")
-            
-            # Remover assinatura do XML para validação
-            root.remove(assinatura_elem)
-            xml_sem_assinatura = serializar_xml(root)
-            
-            # Calcular novo hash
-            hash_calculado = calcular_hmac(xml_sem_assinatura)
-            
-            # Comparar hashes
-            if hash_recebido != hash_calculado:
-                raise Exception("ASSINATURA_INVALIDA: Hash não confere com conteúdo")
-            
-            # Restaurar assinatura (para referência)
-            root.append(assinatura_elem)
-            
-            # Processar pacientes
-            pacientes_list = root.findall('paciente')
-            total_sincronizados = 0
-            
-            for pac_elem in pacientes_list:
-                cpf_elem = pac_elem.find('cpf')
-                status_elem = pac_elem.find('status')
-                permite_atendimento_elem = pac_elem.find('permite_atendimento')
-                observacao_elem = pac_elem.find('observacao')
-                
-                if cpf_elem is None or status_elem is None:
-                    raise Exception("XML_INVALIDO: Faltam campos cpf ou status")
-                
-                cpf = cpf_elem.text.replace('.', '').replace('-', '')
-                
-                # Armazenar em cache
-                self.cache_status_financeiro[cpf] = {
-                    'cpf': cpf,
-                    'status': status_elem.text,
-                    'permite_atendimento': int(permite_atendimento_elem.text or 0),
-                    'observacao': observacao_elem.text if observacao_elem is not None else None,
-                    'sincronizado_em': datetime.now().isoformat(),
-                    'grupo_origem': grupo_origem
-                }
-                
-                total_sincronizados += 1
-            
+            total, mensagem = self.status_financeiro.sincronizar(arquivo_xml, grupo_origem)
             return ResultadoType(
                 success=True,
                 timestamp=datetime.now(),
-                mensagem=f"Sincronizados {total_sincronizados} pacientes de {grupo_origem}"
+                mensagem=mensagem
             )
-        
         except etree.XMLSyntaxError as e:
             raise Exception(f"XML_INVALIDO: {str(e)}")
         except Exception as e:

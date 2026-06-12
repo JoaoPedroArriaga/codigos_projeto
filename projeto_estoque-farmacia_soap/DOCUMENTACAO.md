@@ -325,14 +325,25 @@ projeto_estoque-farmacia_soap/
 
 ---
 
-## Integração entre grupos
+## Integração entre grupos (SOAP + REST conectados)
 
-| Grupo | Papel | Operações típicas |
-|-------|-------|-------------------|
-| G1 | Financeiro / consumo | **Puxa** `gerarRelatorioConsumo`; **envia** `sincronizarStatusFinanceiro` |
-| G2 | Prescrição / consulta | `consultarDisponibilidade`, `criarReserva` |
-| G3 | Estoque (este projeto) | Expõe SOAP + consolida consumo no banco |
-| Dashboard | Interface local | Via `GRUPO_DASHBOARD` no HMAC |
+Usamos **dois servidores G3** na disciplina de interoperabilidade — mesma regra de negócio, protocolos diferentes:
+
+| Servidor | Projeto | Porta |
+|----------|---------|-------|
+| G3 SOAP | `projeto_estoque-farmacia_soap` (este) | 8000 |
+| G3 REST | `projeto_estoque-farmacia_xml_rest` | 8001 |
+
+Visão completa: [`../INTEROPERABILIDADE.md`](../INTEROPERABILIDADE.md)
+
+| Grupo | Papel | SOAP (este projeto) | REST (xml_rest) |
+|-------|-------|---------------------|-----------------|
+| G1 | Financeiro | Puxa `gerarRelatorioConsumo`; envia `sincronizarStatusFinanceiro` | `GET /api/relatorios/consumo`; `POST /api/integracao/status-financeiro` |
+| G2 | Prescrição | `consultarDisponibilidade`, `criarReserva` | `POST /api/estoque/consultar`, `POST /api/reservas` |
+| G3 | Estoque | Este servidor | Servidor REST paralelo |
+| Dashboard | UI local | `GRUPO_DASHBOARD` via SOAP | — |
+
+**Subir ambos:** `..\iniciar_sistema.ps1` na raiz do repositório.
 
 ### Relatório de consumo — G1 puxa no começo do dia (pull)
 
