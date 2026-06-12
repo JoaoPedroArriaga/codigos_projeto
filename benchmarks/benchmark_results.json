@@ -1,0 +1,159 @@
+{
+  "timestamp": "2026-06-12T10:53:38.007972",
+  "config": {
+    "soap_url": "http://localhost:8000",
+    "rest_url": "http://localhost:8001",
+    "iterations": 20,
+    "codigo_medicamento": 789123
+  },
+  "cenarios": [
+    {
+      "nome": "Listar medicamentos",
+      "rest": {
+        "projeto": "projeto_estoque-farmacia_xml_rest",
+        "endpoint": "GET /api/medicamentos",
+        "request_bytes": 2,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 1.44,
+          "avg_ms": 3.31,
+          "max_ms": 12.77,
+          "stddev_ms": 2.31,
+          "p95_ms": 12.77,
+          "p99_ms": 12.77,
+          "last_response_bytes": 357
+        }
+      },
+      "soap": {
+        "projeto": "projeto_estoque-farmacia_soap",
+        "endpoint": "POST /soap → listarMedicamentos",
+        "request_bytes": 583,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 1.68,
+          "avg_ms": 3.01,
+          "max_ms": 5.33,
+          "stddev_ms": 1.11,
+          "p95_ms": 5.33,
+          "p99_ms": 5.33,
+          "last_response_bytes": 1220
+        }
+      }
+    },
+    {
+      "nome": "Consultar disponibilidade",
+      "rest": {
+        "projeto": "projeto_estoque-farmacia_xml_rest",
+        "endpoint": "POST /api/estoque/consultar",
+        "request_bytes": 78,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 2.16,
+          "avg_ms": 4.27,
+          "max_ms": 12.29,
+          "stddev_ms": 2.09,
+          "p95_ms": 12.29,
+          "p99_ms": 12.29,
+          "last_response_bytes": 121
+        }
+      },
+      "soap": {
+        "projeto": "projeto_estoque-farmacia_soap",
+        "endpoint": "POST /soap → consultarDisponibilidade",
+        "request_bytes": 756,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 1.86,
+          "avg_ms": 3.57,
+          "max_ms": 6.02,
+          "stddev_ms": 1.16,
+          "p95_ms": 6.02,
+          "p99_ms": 6.02,
+          "last_response_bytes": 827
+        }
+      }
+    },
+    {
+      "nome": "Obter estoque",
+      "rest": {
+        "projeto": "projeto_estoque-farmacia_xml_rest",
+        "endpoint": "GET /api/estoque/789123",
+        "request_bytes": 0,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 1.84,
+          "avg_ms": 3.98,
+          "max_ms": 5.91,
+          "stddev_ms": 1.22,
+          "p95_ms": 5.91,
+          "p99_ms": 5.91,
+          "last_response_bytes": 408
+        }
+      },
+      "soap": {
+        "projeto": "projeto_estoque-farmacia_soap",
+        "endpoint": "POST /soap → obterEstoque",
+        "request_bytes": 650,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 1.72,
+          "avg_ms": 3.59,
+          "max_ms": 6.03,
+          "stddev_ms": 1.06,
+          "p95_ms": 6.03,
+          "p99_ms": 6.03,
+          "last_response_bytes": 1451
+        }
+      }
+    },
+    {
+      "nome": "Listar lotes",
+      "rest": {
+        "projeto": "projeto_estoque-farmacia_xml_rest",
+        "endpoint": "GET /api/estoque/lotes/789123",
+        "request_bytes": 0,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 1.58,
+          "avg_ms": 3.0,
+          "max_ms": 4.68,
+          "stddev_ms": 0.82,
+          "p95_ms": 4.68,
+          "p99_ms": 4.68,
+          "last_response_bytes": 468
+        }
+      },
+      "soap": {
+        "projeto": "projeto_estoque-farmacia_soap",
+        "endpoint": "POST /soap → listarLotes",
+        "request_bytes": 648,
+        "stats": {
+          "count": 20,
+          "errors": 0,
+          "success_rate": 100.0,
+          "min_ms": 1.8,
+          "avg_ms": 3.33,
+          "max_ms": 5.89,
+          "stddev_ms": 1.04,
+          "p95_ms": 5.89,
+          "p99_ms": 5.89,
+          "last_response_bytes": 1286
+        }
+      }
+    }
+  ]
+}

@@ -253,7 +253,9 @@ python run_api.py
 
 # Terminal 3 — Benchmark
 cd benchmarks
-python benchmark_comparison.py
+python benchmark_comparison.py          # 20 iterações (padrão)
+python benchmark_comparison.py --quick  # 10 iterações (rápido)
+python benchmark_comparison.py -n 50    # mais preciso, mais lento
 ```
 
 | Projeto | Protocolo | Porta padrão |
@@ -261,7 +263,7 @@ python benchmark_comparison.py
 | `projeto_estoque-farmacia_soap` | SOAP | 8000 |
 | `projeto_estoque-farmacia_xml_rest` | REST JSON | 8001 |
 
-O benchmark compara latência, tamanho de payload e taxa de sucesso em 4 cenários equivalentes.
+O benchmark compara latência, tamanho de payload e taxa de sucesso em 4 cenários equivalentes (160 requisições no padrão, 400 com `-n 50`).
 
 ---
 

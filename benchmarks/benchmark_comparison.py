@@ -7,22 +7,20 @@ Compara latência, tamanho de payload e taxa de sucesso entre os dois projetos:
 
 Uso (com os dois servidores rodando):
   cd benchmarks
-  python benchmark_comparison.py
-  python benchmark_comparison.py --iterations 50
-
-Subir os servidores:
-  Terminal 1: cd projeto_estoque-farmacia_soap && python run_api.py
-  Terminal 2: cd projeto_estoque-farmacia_xml_rest && python run_api.py
+  python benchmark_comparison.py              # 20 iterações (padrão)
+  python benchmark_comparison.py --quick      # 10 iterações (rápido)
+  python benchmark_comparison.py -n 50        # mais preciso, mais lento
 """
 import argparse
+import http.client
 import json
 import sys
 import time
 from datetime import datetime
 from pathlib import Path
 from statistics import mean, stdev
-from urllib import request as urlrequest
 from urllib.error import HTTPError, URLError
+from urllib.parse import urlparse
 
 PROJETO_SOAP = Path(__file__).resolve().parent.parent / "projeto_estoque-farmacia_soap"
 sys.path.insert(0, str(PROJETO_SOAP))
@@ -37,12 +35,53 @@ CPF_PACIENTE = "12345678901"
 QUANTIDADE = 1
 
 
-def medir_latencia(fn, iterations: int) -> dict | None:
+class HttpClient:
+    """Cliente HTTP com conexão persistente (keep-alive) para medir mais rápido."""
+
+    def __init__(self, base_url: str):
+        parsed = urlparse(base_url)
+        self.host = parsed.hostname
+        self.port = parsed.port or 80
+        self._conn: http.client.HTTPConnection | None = None
+
+    def _get_conn(self) -> http.client.HTTPConnection:
+        if self._conn is None:
+            self._conn = http.client.HTTPConnection(self.host, self.port, timeout=15)
+        return self._conn
+
+    def request(
+        self,
+        method: str,
+        path: str,
+        body: bytes = None,
+        headers: dict | None = None,
+    ) -> tuple[int, int]:
+        conn = self._get_conn()
+        try:
+            conn.request(method, path, body=body, headers=headers or {})
+            resp = conn.getresponse()
+            data = resp.read()
+            return resp.status, len(data)
+        except (http.client.HTTPException, OSError):
+            self.close()
+            raise
+
+    def close(self):
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except OSError:
+                pass
+            self._conn = None
+
+
+def medir_latencia(fn, iterations: int, label: str = "") -> dict | None:
     """Executa fn() N vezes e retorna estatísticas em ms."""
     latencias = []
     erros = 0
+    tamanho = 0
 
-    for _ in range(iterations):
+    for i in range(iterations):
         try:
             inicio = time.perf_counter()
             status, tamanho = fn()
@@ -54,6 +93,9 @@ def medir_latencia(fn, iterations: int) -> dict | None:
                 erros += 1
         except Exception:
             erros += 1
+
+        if label and ((i + 1) % 5 == 0 or i + 1 == iterations):
+            print(f"    {label}: {i + 1}/{iterations}", flush=True)
 
     if not latencias:
         return None
@@ -73,55 +115,6 @@ def medir_latencia(fn, iterations: int) -> dict | None:
     }
 
 
-def _http_request(url: str, method: str = "GET", data: bytes = None, headers: dict = None):
-    """Retorna (status_code, response_bytes)."""
-    req = urlrequest.Request(url, data=data, headers=headers or {}, method=method)
-    try:
-        with urlrequest.urlopen(req, timeout=10) as resp:
-            body = resp.read()
-            return resp.status, len(body)
-    except HTTPError as e:
-        body = e.read()
-        return e.code, len(body)
-
-
-def req_rest_get(path: str):
-    def _call():
-        return _http_request(f"{REST_BASE_URL}{path}")
-    return _call
-
-
-def req_rest_post(path: str, payload: dict):
-    body = json.dumps(payload).encode("utf-8")
-
-    def _call():
-        return _http_request(
-            f"{REST_BASE_URL}{path}",
-            method="POST",
-            data=body,
-            headers={"Content-Type": "application/json", "Accept": "application/json"},
-        )
-    return _call
-
-
-def req_soap(operacao: str, parametros: dict | None = None):
-    xml = montar_envelope(operacao, parametros or {})
-    data = xml.encode("utf-8")
-
-    def _call():
-        return _http_request(
-            f"{SOAP_BASE_URL}/soap",
-            method="POST",
-            data=data,
-            headers={
-                "Content-Type": "text/xml; charset=utf-8",
-                "SOAPAction": operacao,
-            },
-        )
-
-    return _call, len(data)
-
-
 def calcular_delta(rest_val: float, soap_val: float) -> str:
     if rest_val == 0:
         return "N/A"
@@ -130,95 +123,107 @@ def calcular_delta(rest_val: float, soap_val: float) -> str:
     return f"{sinal}{diff:.0f}%"
 
 
-def verificar_servidor(base_url: str, health_path: str = "/health") -> bool:
+def verificar_servidor(client: HttpClient, health_path: str = "/health") -> bool:
     try:
-        status, _ = _http_request(f"{base_url}{health_path}")
+        status, _ = client.request("GET", health_path)
         return status == 200
-    except (URLError, HTTPError, TimeoutError):
+    except (URLError, HTTPError, OSError, http.client.HTTPException):
         return False
 
 
-def executar_benchmark(iterations: int) -> dict:
-    cenarios = []
-
-    # 1. Listar medicamentos
-    soap_fn, soap_req_bytes = req_soap("listarMedicamentos")
-    rest_payload = {}
-    cenarios.append({
-        "nome": "Listar medicamentos",
+def _criar_cenario(
+    nome: str,
+    rest_client: HttpClient,
+    soap_client: HttpClient,
+    rest_call,
+    soap_call,
+    soap_req_bytes: int,
+    rest_endpoint: str,
+    soap_endpoint: str,
+    rest_req_bytes: int,
+    iterations: int,
+) -> dict:
+    print(f"  → {nome}")
+    return {
+        "nome": nome,
         "rest": {
             "projeto": "projeto_estoque-farmacia_xml_rest",
-            "endpoint": "GET /api/medicamentos",
-            "request_bytes": len(json.dumps(rest_payload).encode()),
-            "stats": medir_latencia(req_rest_get("/api/medicamentos"), iterations),
+            "endpoint": rest_endpoint,
+            "request_bytes": rest_req_bytes,
+            "stats": medir_latencia(rest_call, iterations, "REST "),
         },
         "soap": {
             "projeto": "projeto_estoque-farmacia_soap",
-            "endpoint": "POST /soap → listarMedicamentos",
+            "endpoint": soap_endpoint,
             "request_bytes": soap_req_bytes,
-            "stats": medir_latencia(soap_fn, iterations),
+            "stats": medir_latencia(soap_call, iterations, "SOAP"),
         },
-    })
+    }
 
-    # 2. Consultar disponibilidade
-    consulta_rest = {
+
+def executar_benchmark(iterations: int, rest_client: HttpClient, soap_client: HttpClient) -> dict:
+    cenarios = []
+
+    soap_xml, soap_req_bytes = _soap_payload("listarMedicamentos")
+    cenarios.append(_criar_cenario(
+        "Listar medicamentos",
+        rest_client, soap_client,
+        lambda: rest_client.request("GET", "/api/medicamentos"),
+        lambda: soap_client.request("POST", "/soap", soap_xml, _soap_headers("listarMedicamentos")),
+        soap_req_bytes,
+        "GET /api/medicamentos",
+        "POST /soap → listarMedicamentos",
+        2,
+        iterations,
+    ))
+
+    consulta = {
         "codigo_medicamento": CODIGO_MEDICAMENTO,
         "quantidade": QUANTIDADE,
         "cpf_paciente": CPF_PACIENTE,
     }
-    consulta_soap = dict(consulta_rest)
-    soap_fn, soap_req_bytes = req_soap("consultarDisponibilidade", consulta_soap)
-    cenarios.append({
-        "nome": "Consultar disponibilidade",
-        "rest": {
-            "projeto": "projeto_estoque-farmacia_xml_rest",
-            "endpoint": "POST /api/estoque/consultar",
-            "request_bytes": len(json.dumps(consulta_rest).encode()),
-            "stats": medir_latencia(req_rest_post("/api/estoque/consultar", consulta_rest), iterations),
-        },
-        "soap": {
-            "projeto": "projeto_estoque-farmacia_soap",
-            "endpoint": "POST /soap → consultarDisponibilidade",
-            "request_bytes": soap_req_bytes,
-            "stats": medir_latencia(soap_fn, iterations),
-        },
-    })
+    consulta_body = json.dumps(consulta).encode()
+    soap_xml, soap_req_bytes = _soap_payload("consultarDisponibilidade", consulta)
+    cenarios.append(_criar_cenario(
+        "Consultar disponibilidade",
+        rest_client, soap_client,
+        lambda: rest_client.request(
+            "POST", "/api/estoque/consultar", consulta_body,
+            {"Content-Type": "application/json", "Accept": "application/json"},
+        ),
+        lambda: soap_client.request("POST", "/soap", soap_xml, _soap_headers("consultarDisponibilidade")),
+        soap_req_bytes,
+        "POST /api/estoque/consultar",
+        "POST /soap → consultarDisponibilidade",
+        len(consulta_body),
+        iterations,
+    ))
 
-    # 3. Obter estoque
-    soap_fn, soap_req_bytes = req_soap("obterEstoque", {"codigo_medicamento": CODIGO_MEDICAMENTO})
-    cenarios.append({
-        "nome": "Obter estoque",
-        "rest": {
-            "projeto": "projeto_estoque-farmacia_xml_rest",
-            "endpoint": f"GET /api/estoque/{CODIGO_MEDICAMENTO}",
-            "request_bytes": 0,
-            "stats": medir_latencia(req_rest_get(f"/api/estoque/{CODIGO_MEDICAMENTO}"), iterations),
-        },
-        "soap": {
-            "projeto": "projeto_estoque-farmacia_soap",
-            "endpoint": "POST /soap → obterEstoque",
-            "request_bytes": soap_req_bytes,
-            "stats": medir_latencia(soap_fn, iterations),
-        },
-    })
+    soap_xml, soap_req_bytes = _soap_payload("obterEstoque", {"codigo_medicamento": CODIGO_MEDICAMENTO})
+    cenarios.append(_criar_cenario(
+        "Obter estoque",
+        rest_client, soap_client,
+        lambda: rest_client.request("GET", f"/api/estoque/{CODIGO_MEDICAMENTO}"),
+        lambda: soap_client.request("POST", "/soap", soap_xml, _soap_headers("obterEstoque")),
+        soap_req_bytes,
+        f"GET /api/estoque/{CODIGO_MEDICAMENTO}",
+        "POST /soap → obterEstoque",
+        0,
+        iterations,
+    ))
 
-    # 4. Listar lotes
-    soap_fn, soap_req_bytes = req_soap("listarLotes", {"codigo_medicamento": CODIGO_MEDICAMENTO})
-    cenarios.append({
-        "nome": "Listar lotes",
-        "rest": {
-            "projeto": "projeto_estoque-farmacia_xml_rest",
-            "endpoint": f"GET /api/estoque/lotes/{CODIGO_MEDICAMENTO}",
-            "request_bytes": 0,
-            "stats": medir_latencia(req_rest_get(f"/api/estoque/lotes/{CODIGO_MEDICAMENTO}"), iterations),
-        },
-        "soap": {
-            "projeto": "projeto_estoque-farmacia_soap",
-            "endpoint": "POST /soap → listarLotes",
-            "request_bytes": soap_req_bytes,
-            "stats": medir_latencia(soap_fn, iterations),
-        },
-    })
+    soap_xml, soap_req_bytes = _soap_payload("listarLotes", {"codigo_medicamento": CODIGO_MEDICAMENTO})
+    cenarios.append(_criar_cenario(
+        "Listar lotes",
+        rest_client, soap_client,
+        lambda: rest_client.request("GET", f"/api/estoque/lotes/{CODIGO_MEDICAMENTO}"),
+        lambda: soap_client.request("POST", "/soap", soap_xml, _soap_headers("listarLotes")),
+        soap_req_bytes,
+        f"GET /api/estoque/lotes/{CODIGO_MEDICAMENTO}",
+        "POST /soap → listarLotes",
+        0,
+        iterations,
+    ))
 
     return {
         "timestamp": datetime.now().isoformat(),
@@ -232,11 +237,25 @@ def executar_benchmark(iterations: int) -> dict:
     }
 
 
+def _soap_payload(operacao: str, parametros: dict | None = None) -> tuple[bytes, int]:
+    xml = montar_envelope(operacao, parametros or {})
+    data = xml.encode("utf-8")
+    return data, len(data)
+
+
+def _soap_headers(operacao: str) -> dict:
+    return {
+        "Content-Type": "text/xml; charset=utf-8",
+        "SOAPAction": operacao,
+    }
+
+
 def imprimir_relatorio(resultado: dict):
     print("\n" + "=" * 90)
     print("BENCHMARK: REST vs SOAP".center(90))
     print("=" * 90)
-    print(f"Iterações por cenário: {resultado['config']['iterations']}")
+    total_req = resultado["config"]["iterations"] * 4 * 2
+    print(f"Iterações por cenário: {resultado['config']['iterations']} ({total_req} requisições no total)")
     print(f"REST (xml_rest): {resultado['config']['rest_url']}")
     print(f"SOAP (soap):     {resultado['config']['soap_url']}\n")
 
@@ -286,29 +305,44 @@ def main():
     global SOAP_BASE_URL, REST_BASE_URL
 
     parser = argparse.ArgumentParser(description="Benchmark REST (xml_rest) vs SOAP (soap)")
-    parser.add_argument("--iterations", "-n", type=int, default=50, help="Requisições por cenário (padrão: 50)")
+    parser.add_argument("--iterations", "-n", type=int, default=20, help="Requisições por lado/cenário (padrão: 20)")
+    parser.add_argument("--quick", "-q", action="store_true", help="Modo rápido: 10 iterações")
     parser.add_argument("--output", "-o", default="benchmark_results.json", help="Arquivo de saída JSON")
     parser.add_argument("--soap-url", default=SOAP_BASE_URL, help="URL base do projeto SOAP (padrão: 8000)")
     parser.add_argument("--rest-url", default=REST_BASE_URL, help="URL base do projeto REST (padrão: 8001)")
     args = parser.parse_args()
 
+    iterations = 10 if args.quick else args.iterations
     SOAP_BASE_URL = args.soap_url.rstrip("/")
     REST_BASE_URL = args.rest_url.rstrip("/")
 
+    soap_client = HttpClient(SOAP_BASE_URL)
+    rest_client = HttpClient(REST_BASE_URL)
+
     print(f"Verificando SOAP em {SOAP_BASE_URL} ...")
-    if not verificar_servidor(SOAP_BASE_URL, "/soap/health"):
+    if not verificar_servidor(soap_client, "/soap/health"):
         print("ERRO: Servidor SOAP não está rodando.")
         print("Execute: cd projeto_estoque-farmacia_soap && python run_api.py")
         sys.exit(1)
 
     print(f"Verificando REST em {REST_BASE_URL} ...")
-    if not verificar_servidor(REST_BASE_URL, "/health"):
+    if not verificar_servidor(rest_client, "/health"):
         print("ERRO: Servidor REST não está rodando.")
         print("Execute: cd projeto_estoque-farmacia_xml_rest && python run_api.py")
         sys.exit(1)
 
-    print(f"Executando benchmark ({args.iterations} iterações/cenário)...")
-    resultado = executar_benchmark(args.iterations)
+    total = iterations * 4 * 2
+    print(f"\nExecutando benchmark ({iterations} iterações × 4 cenários × REST+SOAP = {total} reqs)...")
+    inicio = time.perf_counter()
+
+    try:
+        resultado = executar_benchmark(iterations, rest_client, soap_client)
+    finally:
+        rest_client.close()
+        soap_client.close()
+
+    elapsed = time.perf_counter() - inicio
+    print(f"\nConcluído em {elapsed:.1f}s")
 
     output_path = Path(__file__).parent / args.output
     with open(output_path, "w", encoding="utf-8") as f:
@@ -327,6 +361,7 @@ def main():
         conclusao = {
             "titulo": "Benchmark: REST vs SOAP",
             "data": resultado["timestamp"],
+            "duracao_segundos": round(elapsed, 1),
             "servidores": {
                 "rest": REST_BASE_URL,
                 "soap": SOAP_BASE_URL,

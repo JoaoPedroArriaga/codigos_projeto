@@ -1,17 +1,22 @@
 {
   "titulo": "Benchmark: REST vs SOAP",
-  "data": "2026-06-09T17:37:58.232087",
-  "conclusao": {
-    "melhor_para_performance": "REST (65% mais rápido em latência)",
-    "melhor_para_interoperabilidade": "SOAP (padrão global, WSDL formal)",
-    "recomendacao_projeto": "SOAP está correto - prioridade é interoperabilidade com G1/G2",
-    "impacto_negocio": "Negligenciável - latência +2-3ms em operação de estoque"
+  "data": "2026-06-12T10:53:38.007972",
+  "duracao_segundos": 0.6,
+  "servidores": {
+    "rest": "http://localhost:8001",
+    "soap": "http://localhost:8000"
   },
-  "proximos_passos": [
-    "1. Executar benchmark real em produção",
-    "2. Medir P99 em carga alta (100+ concorrentes)",
-    "3. Comparar custo (servidor + banda) REST vs SOAP",
-    "4. Testar com G1/G2 para validar integração",
-    "5. Otimizar gargalos identificados"
-  ]
+  "metricas": {
+    "latencia_media_rest_ms": 3.64,
+    "latencia_media_soap_ms": 3.38,
+    "delta_percentual": -7.3
+  },
+  "conclusao": {
+    "melhor_para_performance": "SOAP",
+    "melhor_para_interoperabilidade": "SOAP (WSDL, contrato formal, integração G1/G2)",
+    "projeto_rest": "projeto_estoque-farmacia_xml_rest",
+    "projeto_soap": "projeto_estoque-farmacia_soap",
+    "recomendacao": "Comparar os dois projetos em portas distintas para benchmark justo"
+  },
+  "arquivo_resultados": "benchmark_results.json"
 }
