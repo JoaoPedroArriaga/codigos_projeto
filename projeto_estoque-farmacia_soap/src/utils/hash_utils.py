@@ -19,6 +19,38 @@ def calcular_hmac(conteudo: str) -> str:
     ).hexdigest()
 
 
+def calcular_hmac_body_soap(body_element: etree.Element) -> str:
+    """Calcula HMAC-SHA256 do elemento de operação no SOAP Body"""
+    return calcular_hmac(serializar_xml(body_element))
+
+
+def calcular_hmac_envelope_xml(envelope_xml: str) -> str:
+    """
+    Calcula HMAC do body a partir do XML serializado do envelope.
+    Garante que cliente e servidor usem a mesma canonicalização (parse → body[0] → hash).
+    """
+    from src.soap.handlers.envelope import SOAPEnvelope
+
+    root = etree.fromstring(envelope_xml.encode('utf-8'))
+    body = root.find(f"{{{SOAPEnvelope.NS_SOAP}}}Body")
+    if body is None or len(body) == 0:
+        raise ValueError("Envelope SOAP sem operação no Body")
+    return calcular_hmac_body_soap(body[0])
+
+
+def assinar_envelope_requisicao(envelope: etree.Element) -> None:
+    """Calcula e injeta o hash HMAC no header de um envelope de requisição"""
+    from src.soap.handlers.envelope import SOAPEnvelope
+
+    xml_temp = SOAPEnvelope.serializar_xml(envelope, pretty=False)
+    hash_valor = calcular_hmac_envelope_xml(xml_temp)
+
+    header = envelope.find(f"{{{SOAPEnvelope.NS_SOAP}}}Header")
+    autenticacao = header.find(f"{{{SOAPEnvelope.NS_TNS}}}autenticacao")
+    hash_elem = autenticacao.find(f"{{{SOAPEnvelope.NS_TNS}}}hash")
+    hash_elem.text = hash_valor
+
+
 def serializar_xml(root: etree.Element) -> str:
     """Serializa XML de forma consistente (sem espaços extras)"""
     return etree.tostring(

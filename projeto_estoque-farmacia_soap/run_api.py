@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Inicializador do Sistema de Estoque e Farmácia
-Inicia a API REST e o processamento em background de forma sincronizada
+Inicia o servidor SOAP + dashboard e o processamento em background
 """
 import sys
 import os
@@ -38,8 +38,8 @@ def iniciar_processamento_background():
 
 
 def iniciar_api():
-    """Inicia a API REST"""
-    logger.info("🌐 Iniciando API REST...")
+    """Inicia o servidor SOAP + dashboard"""
+    logger.info("🌐 Iniciando servidor SOAP...")
     
     import uvicorn
     from src.api.app import app
@@ -72,8 +72,9 @@ def main():
     
     # Iniciar API na thread principal
     logger.info("=" * 60)
-    logger.info("📡 API disponível em http://localhost:8000")
-    logger.info("📚 Documentação em http://localhost:8000/docs")
+    logger.info("📡 Dashboard em http://localhost:8000")
+    logger.info("🔌 SOAP WSDL em http://localhost:8000/soap?wsdl")
+    logger.info("💚 SOAP Health em http://localhost:8000/soap/health")
     logger.info("=" * 60)
     
     iniciar_api()

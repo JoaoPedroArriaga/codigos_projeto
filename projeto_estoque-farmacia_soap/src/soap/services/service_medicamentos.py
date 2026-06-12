@@ -123,10 +123,8 @@ class ServiceMedicamentos:
                     existente = self.repositorio.buscar_por_codigo(codigo)
                     
                     if existente:
-                        # Atualizar
-                        self.repositorio.atualizar(existente['id'], {'codigo': codigo, 'nome': nome})
+                        self.repositorio.atualizar(codigo, {'nome': nome})
                     else:
-                        # Criar novo
                         self.repositorio.criar({'codigo': codigo, 'nome': nome})
                     
                     total_sincronizados += 1
@@ -140,8 +138,13 @@ class ServiceMedicamentos:
                     mensagem=f"Sincronizados {total_sincronizados} medicamentos de {grupo_origem}"
                 )
             
+            except ValueError as e:
+                db.rollback()
+                raise Exception(f"XML_INVALIDO: Campo 'codigo' não é número - {str(e)}")
             except Exception as e:
                 db.rollback()
+                if "XML_INVALIDO" in str(e):
+                    raise
                 raise Exception(f"ERRO_PROCESSAMENTO: {str(e)}")
         
         except etree.XMLSyntaxError as e:

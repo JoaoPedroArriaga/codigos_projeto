@@ -1,6 +1,14 @@
 """
 Exemplos de curl para testar SOAP API
 Execute estes comandos no terminal para testar a API
+
+IMPORTANTE: Os hashes HMAC nos exemplos abaixo são placeholders.
+Para requisições autenticadas, gere o hash real com:
+  python exemplos_soap.py --hash-only listarMedicamentos
+
+Ou use o cliente Python completo (recomendado):
+  python exemplos_soap.py
+  python exemplos_soap.py consultarDisponibilidade
 """
 
 # ===== 1. Verificar WSDL =====

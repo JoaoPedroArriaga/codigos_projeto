@@ -1,155 +1,171 @@
 /**
- * Cliente da API - Abstração para chamadas à API REST
- * Segue o padrão DRY e KISS
+ * Cliente da API - Camada de abstração sobre SOAP
+ * Mantém a mesma interface usada pelo app.js (compatível com o dashboard)
  */
 
 class APIClient {
-    constructor(baseURL = 'http://localhost:8000') {
-        this.baseURL = baseURL;
-        this.timeout = 10000; // 10 segundos
+    constructor(baseURL = '') {
+        this.soap = new SOAPClient(baseURL);
     }
 
-    /**
-     * Faz uma requisição HTTP com tratamento de erro
-     */
-    async fazer_requisicao(caminho, metodo = 'GET', dados = null) {
-        const url = `${this.baseURL}${caminho}`;
-        
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), this.timeout);
-        
-        try {
-            const opcoes = {
-                method: metodo,
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Accept': 'application/json'
-                },
-                signal: controller.signal
-            };
-
-            if (dados && (metodo === 'POST' || metodo === 'PUT')) {
-                opcoes.body = JSON.stringify(dados);
-            }
-
-            const resposta = await fetch(url, opcoes);
-            clearTimeout(timeoutId);
-
-            if (!resposta.ok) {
-                let erroMsg = `HTTP ${resposta.status}`;
-                try {
-                    const erro = await resposta.json();
-                    erroMsg = erro.detail || erro.mensagem || erroMsg;
-                } catch(e) {}
-                throw new Error(erroMsg);
-            }
-
-            return await resposta.json();
-        } catch (erro) {
-            clearTimeout(timeoutId);
-            if (erro.name === 'AbortError') {
-                throw new Error('Timeout na requisição - servidor não respondeu');
-            }
-            console.error(`Erro na requisição ${metodo} ${url}:`, erro);
-            throw erro;
-        }
-    }
-
-    /**
-     * Verifica conexão com a API
-     */
     async verificar_conexao() {
-        try {
-            const resposta = await this.fazer_requisicao('/health');
-            return resposta.status === 'healthy';
-        } catch {
-            return false;
-        }
+        return await this.soap.verificarConexao();
     }
 
     // ==================== MEDICAMENTOS ====================
 
     async listar_medicamentos() {
-        return await this.fazer_requisicao('/api/medicamentos');
+        const dados = await this.soap.enviar('listarMedicamentos');
+        const itens = dados?.iten || dados?.itens || [];
+        return Array.isArray(itens) ? itens : [itens];
     }
 
     async obter_medicamento(codigo) {
-        return await this.fazer_requisicao(`/api/medicamentos/${codigo}`);
+        return await this.soap.enviar('obterMedicamento', { codigo: parseInt(codigo, 10) });
     }
 
     // ==================== ESTOQUE ====================
 
     async obter_estoque(codigo_medicamento) {
-        return await this.fazer_requisicao(`/api/estoque/${codigo_medicamento}`);
+        const dados = await this.soap.enviar('obterEstoque', {
+            codigo_medicamento: parseInt(codigo_medicamento, 10)
+        });
+        return {
+            codigo_medicamento: dados.codigo_medicamento,
+            quantidade_total: dados.quantidade_total,
+            nome_medicamento: dados.nome_medicamento,
+            lotes: this._normalizarLotes(dados.lote || dados.lotes || dados.iten)
+        };
     }
 
     async consultar_disponibilidade(codigo_medicamento, quantidade, cpf_paciente) {
-        const dados = {
-            codigo_medicamento: parseInt(codigo_medicamento),
-            quantidade: parseInt(quantidade),
+        const dados = await this.soap.enviar('consultarDisponibilidade', {
+            codigo_medicamento: parseInt(codigo_medicamento, 10),
+            quantidade: parseInt(quantidade, 10),
             cpf_paciente: String(cpf_paciente).replace(/\D/g, '')
-        };
-        
-        const resposta = await this.fazer_requisicao('/api/estoque/consultar', 'POST', dados);
-        
-        const respostas = resposta.respostas || [];
-        const primeiraResposta = respostas[0] || {};
-        
+        });
+
+        const resposta = dados?.resposta || dados?.respostas;
+        const primeira = Array.isArray(resposta) ? resposta[0] : resposta;
+
         return {
-            codigo_medicamento: primeiraResposta.codigo_medicamento,
-            disponivel: primeiraResposta.disponivel === 1 || primeiraResposta.disponivel === "1",
-            observacao: primeiraResposta.observacao || ''
+            codigo_medicamento: primeira?.codigo_medicamento,
+            disponivel: primeira?.disponivel === 1 || primeira?.disponivel === '1',
+            observacao: primeira?.observacao || ''
         };
     }
 
     async listar_lotes(codigo_medicamento) {
-        return await this.fazer_requisicao(`/api/estoque/lotes/${codigo_medicamento}`);
+        const lotes = await this._listarLotesInterno(codigo_medicamento);
+        return { lotes };
     }
 
-    // ==================== RESERVAS (FEFO - SEM LOTE MANUAL) ====================
+    // ==================== RESERVAS ====================
 
     async criar_reserva(codigo_medicamento, quantidade, cpf_paciente) {
-        /**
-         * Cria uma reserva usando FEFO (First Expiry First Out)
-         * O lote é automaticamente selecionado pelo sistema
-         */
-        const dados = {
-            codigo_medicamento: parseInt(codigo_medicamento),
-            quantidade: parseInt(quantidade),
+        const dados = await this.soap.enviar('criarReserva', {
+            codigo_medicamento: parseInt(codigo_medicamento, 10),
+            quantidade: parseInt(quantidade, 10),
             cpf_paciente: String(cpf_paciente).replace(/\D/g, '')
-            // SEM o campo lote - o sistema decide qual lote usar via FEFO
+        });
+
+        return {
+            success: true,
+            id_reserva: dados.id_reserva,
+            lote_selecionado: dados.numero_lote,
+            data_validade: dados.data_validade,
+            preco: dados.preco,
+            mensagem: `Reserva criada com sucesso! Lote ${dados.numero_lote} (FEFO)`
         };
-        return await this.fazer_requisicao('/api/reservas', 'POST', dados);
     }
 
     async listar_reservas() {
-        return await this.fazer_requisicao('/api/reservas');
+        const dados = await this.soap.enviar('listarReservas');
+        const itens = dados?.iten || dados?.itens || [];
+        const lista = Array.isArray(itens) ? itens : (itens ? [itens] : []);
+
+        return {
+            total: lista.length,
+            reservas: lista.map(r => ({
+                id_reserva: r.id_reserva,
+                codigo_medicamento: r.codigo_medicamento,
+                quantidade: r.quantidade,
+                lote: r.numero_lote,
+                numero_lote: r.numero_lote,
+                cpf_paciente: r.cpf_paciente,
+                data_reserva: r.data_criacao || r.data_reserva,
+                status: r.status
+            }))
+        };
     }
 
     async obter_reserva(id_reserva) {
-        return await this.fazer_requisicao(`/api/reservas/${id_reserva}`);
+        return await this.soap.enviar('obterReserva', { id_reserva: String(id_reserva) });
     }
 
     async cancelar_reserva(id_reserva) {
-        return await this.fazer_requisicao(`/api/reservas/${id_reserva}`, 'DELETE');
+        const dados = await this.soap.enviar('cancelarReserva', { id_reserva: String(id_reserva) });
+        return {
+            success: dados.success === true || dados.success === 'true',
+            mensagem: dados.mensagem || 'Reserva cancelada'
+        };
     }
 
     async listar_lotes_disponiveis_fefo(codigo_medicamento) {
-        return await this.fazer_requisicao(`/api/reservas/lotes-disponiveis/${codigo_medicamento}`);
+        const lotes = await this._listarLotesInterno(codigo_medicamento);
+        const hoje = new Date();
+        const disponiveis = lotes.filter(l => {
+            const qtd = parseFloat(l.quantidade_atual);
+            const validade = new Date(l.data_validade);
+            return qtd > 0 && validade >= hoje;
+        });
+
+        return {
+            codigo_medicamento: parseInt(codigo_medicamento, 10),
+            total_lotes: disponiveis.length,
+            lotes: disponiveis
+        };
     }
 
     // ==================== BAIXAS ====================
 
     async dar_baixa(codigo_medicamento, quantidade, lote, motivo = '') {
-        const dados = {
-            codigo_medicamento: parseInt(codigo_medicamento),
-            quantidade: parseInt(quantidade),
-            lote: String(lote).trim(),
-            motivo: String(motivo).trim()
+        const dados = await this.soap.enviar('registrarBaixa', {
+            codigo_medicamento: parseInt(codigo_medicamento, 10),
+            quantidade: parseInt(quantidade, 10),
+            numero_lote: String(lote).trim(),
+            cpf_paciente: '00000000000',
+            motivo: String(motivo).trim() || 'Baixa via dashboard SOAP'
+        });
+
+        return {
+            success: true,
+            mensagem: `Baixa de ${quantidade} unidades realizada com sucesso`,
+            quantidade_restante: dados.quantidade_restante
         };
-        return await this.fazer_requisicao('/api/baixas', 'POST', dados);
+    }
+
+    // ==================== HELPERS ====================
+
+    _normalizarLotes(lotesRaw) {
+        if (!lotesRaw) return [];
+        const lista = Array.isArray(lotesRaw) ? lotesRaw : [lotesRaw];
+        return lista.map(l => ({
+            numero_lote: l.numero_lote,
+            codigo_medicamento: l.codigo_medicamento,
+            quantidade_atual: l.quantidade_atual,
+            quantidade_inicial: l.quantidade_inicial,
+            data_validade: l.data_validade,
+            preco_venda: l.preco_venda
+        }));
+    }
+
+    async _listarLotesInterno(codigo_medicamento) {
+        const dados = await this.soap.enviar('listarLotes', {
+            codigo_medicamento: parseInt(codigo_medicamento, 10)
+        });
+        return this._normalizarLotes(dados?.iten || dados?.lotes || dados?.lote);
     }
 }
 
-// Instância global
 const api = new APIClient();

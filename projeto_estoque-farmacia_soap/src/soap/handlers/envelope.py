@@ -70,6 +70,23 @@ class SOAPEnvelope:
         return envelope
     
     @staticmethod
+    def montar_body_requisicao(operacao: str, parametros: Dict[str, Any]) -> etree.Element:
+        """Monta o elemento de operação no SOAP Body (sem envelope)"""
+        operacao_elem = etree.Element(f"{{{SOAPEnvelope.NS_TNS}}}{operacao}")
+        for chave, valor in parametros.items():
+            param_elem = etree.SubElement(operacao_elem, f"{{{SOAPEnvelope.NS_TNS}}}{chave}")
+            param_elem.text = str(valor) if valor is not None else ""
+        return operacao_elem
+
+    @staticmethod
+    def montar_body_resposta(operacao: str, resultado: Dict[str, Any]) -> etree.Element:
+        """Monta o elemento de resposta no SOAP Body (sem envelope)"""
+        response_elem = etree.Element(f"{{{SOAPEnvelope.NS_TNS}}}{operacao}Response")
+        for chave, valor in resultado.items():
+            SOAPEnvelope._adicionar_valor(response_elem, chave, valor)
+        return response_elem
+
+    @staticmethod
     def criar_resposta(
         operacao: str,
         resultado: Dict[str, Any],
@@ -167,7 +184,33 @@ class SOAPEnvelope:
             elem.text = str(valor) if valor is not None else ""
     
     @staticmethod
-    def parsear_envelope(envelope_xml: str) -> Tuple[Optional[str], Optional[Dict], Optional[Dict]]:
+    def _extrair_header(header_elem: etree.Element) -> Dict[str, str]:
+        """Extrai campos do header SOAP (autenticacao ou assinatura aninhados)"""
+        header_dict = {}
+        for elem in header_elem:
+            tag = elem.tag.split('}')[-1]
+            if len(elem) > 0:
+                for child in elem:
+                    child_tag = child.tag.split('}')[-1]
+                    header_dict[child_tag] = child.text
+            else:
+                header_dict[tag] = elem.text
+        return header_dict
+
+    @staticmethod
+    def extrair_body_element(envelope_xml: str) -> Optional[etree.Element]:
+        """Retorna o elemento da operação dentro do SOAP Body"""
+        try:
+            root = etree.fromstring(envelope_xml.encode('utf-8'))
+            body = root.find(f"{{{SOAPEnvelope.NS_SOAP}}}Body")
+            if body is None or len(body) == 0:
+                return None
+            return body[0]
+        except Exception:
+            return None
+
+    @staticmethod
+    def parsear_envelope(envelope_xml: str) -> Tuple[Optional[str], Optional[Dict], Optional[Dict], Optional[etree.Element]]:
         """
         Parseia um envelope SOAP recebido
         
@@ -175,45 +218,42 @@ class SOAPEnvelope:
             envelope_xml: String XML do envelope
             
         Returns:
-            Tupla: (nome_operacao, parametros_dict, header_dict) ou (None, None, None) se erro
+            Tupla: (nome_operacao, parametros_dict, header_dict, body_element)
+                   ou (None, None, None, None) se erro
         """
         try:
             root = etree.fromstring(envelope_xml.encode('utf-8'))
             
-            # Extrair header
-            header_elems = root.findall(f"{{{SOAPEnvelope.NS_SOAP}}}Header/*")
             header_dict = {}
-            for elem in header_elems:
-                header_dict[elem.tag.split('}')[-1]] = elem.text
+            header = root.find(f"{{{SOAPEnvelope.NS_SOAP}}}Header")
+            if header is not None:
+                header_dict = SOAPEnvelope._extrair_header(header)
             
-            # Extrair body
             body = root.find(f"{{{SOAPEnvelope.NS_SOAP}}}Body")
-            if body is None:
-                return None, None, None
+            if body is None or len(body) == 0:
+                return None, None, None, None
             
-            # Primeira elemento do body é a operação
             operacao_elem = body[0]
             operacao_nome = operacao_elem.tag.split('}')[-1]
             
-            # Extrair parâmetros
             parametros = {}
             for param in operacao_elem:
                 param_nome = param.tag.split('}')[-1]
                 parametros[param_nome] = param.text
             
-            return operacao_nome, parametros, header_dict
+            return operacao_nome, parametros, header_dict, operacao_elem
             
         except Exception as e:
-            print(f"❌ Erro ao parsear envelope SOAP: {e}")
-            return None, None, None
+            print(f"Erro ao parsear envelope SOAP: {e}")
+            return None, None, None, None
     
     @staticmethod
     def serializar_xml(elemento: etree.Element, pretty: bool = False) -> str:
         """Serializa elemento XML para string"""
         return etree.tostring(
             elemento,
-            encoding='unicode',
+            encoding='utf-8',
             method='xml',
             pretty_print=pretty,
             xml_declaration=True
-        )
+        ).decode('utf-8')

@@ -1,373 +1,353 @@
 """
-🏁 Benchmark: REST vs SOAP
-Compara performance entre endpoints REST e SOAP
+Benchmark: REST vs SOAP
+Compara latência, tamanho de payload e taxa de sucesso entre os dois projetos:
 
-Requisitos:
-  pip install requests apache-bench locust
-  
-Para executar:
+  - REST: projeto_estoque-farmacia_xml_rest  (padrão http://localhost:8001)
+  - SOAP: projeto_estoque-farmacia_soap      (padrão http://localhost:8000)
+
+Uso (com os dois servidores rodando):
+  cd benchmarks
   python benchmark_comparison.py
-"""
+  python benchmark_comparison.py --iterations 50
 
+Subir os servidores:
+  Terminal 1: cd projeto_estoque-farmacia_soap && python run_api.py
+  Terminal 2: cd projeto_estoque-farmacia_xml_rest && python run_api.py
+"""
+import argparse
 import json
+import sys
 import time
-import requests
-import subprocess
 from datetime import datetime
-from statistics import mean, stdev
 from pathlib import Path
+from statistics import mean, stdev
+from urllib import request as urlrequest
+from urllib.error import HTTPError, URLError
 
-# ============================================================================
-# CONFIG
-# ============================================================================
+PROJETO_SOAP = Path(__file__).resolve().parent.parent / "projeto_estoque-farmacia_soap"
+sys.path.insert(0, str(PROJETO_SOAP))
 
-# Endpoints
-REST_BASE = "http://localhost:8000"  # Se existir servidor REST antigo
-SOAP_BASE = "http://localhost:8000/soap"
+from exemplos_soap import montar_envelope  # noqa: E402
 
-# Payloads
-REST_PAYLOAD_LISTAR = {}
+SOAP_BASE_URL = "http://localhost:8000"
+REST_BASE_URL = "http://localhost:8001"
 
-SOAP_PAYLOAD_LISTAR = """<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-               xmlns:tns="http://estoque-farmacia.projeto.interop/v1">
-  <soap:Body>
-    <tns:listarMedicamentos/>
-  </soap:Body>
-</soap:Envelope>
-"""
+CODIGO_MEDICAMENTO = 789123
+CPF_PACIENTE = "12345678901"
+QUANTIDADE = 1
 
-SOAP_PAYLOAD_CONSULTAR = """<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-               xmlns:tns="http://estoque-farmacia.projeto.interop/v1">
-  <soap:Header>
-    <tns:autenticacao>
-      <tns:hash>abc123def456</tns:hash>
-      <tns:timestamp>2026-06-09T10:00:00Z</tns:timestamp>
-      <tns:grupo_origem>GRUPO_2</tns:grupo_origem>
-      <tns:algoritmo>HMAC-SHA256</tns:algoritmo>
-    </tns:autenticacao>
-  </soap:Header>
-  <soap:Body>
-    <tns:consultarDisponibilidade>
-      <tns:codigo_medicamento>789123</tns:codigo_medicamento>
-      <tns:quantidade>5</tns:quantidade>
-      <tns:cpf_paciente>12345678901</tns:cpf_paciente>
-    </tns:consultarDisponibilidade>
-  </soap:Body>
-</soap:Envelope>
-"""
 
-# ============================================================================
-# TESTE 1: LATÊNCIA (Latency Test)
-# ============================================================================
+def medir_latencia(fn, iterations: int) -> dict | None:
+    """Executa fn() N vezes e retorna estatísticas em ms."""
+    latencias = []
+    erros = 0
 
-def benchmark_latency(endpoint, payload, method="POST", headers=None, name=""):
-    """
-    Mede latência de uma operação
-    
-    Retorna:
-        {
-            'min': tempo mínimo (ms),
-            'max': tempo máximo (ms),
-            'avg': tempo médio (ms),
-            'stddev': desvio padrão (ms)
-        }
-    """
-    if headers is None:
-        headers = {"Content-Type": "text/xml"}
-    
-    latencies = []
-    iterations = 100  # 100 requisições
-    
-    print(f"\n  🔄 {name}: {iterations} requisições...")
-    
-    for i in range(iterations):
+    for _ in range(iterations):
         try:
-            start = time.time()
-            
-            if method == "POST":
-                response = requests.post(endpoint, data=payload, headers=headers, timeout=5)
+            inicio = time.perf_counter()
+            status, tamanho = fn()
+            elapsed_ms = (time.perf_counter() - inicio) * 1000
+
+            if status in (200, 201):
+                latencias.append(elapsed_ms)
             else:
-                response = requests.get(endpoint, timeout=5)
-            
-            elapsed = (time.time() - start) * 1000  # Converter para ms
-            
-            if response.status_code in [200, 201, 500]:  # Incluir 500 para SOAP Faults
-                latencies.append(elapsed)
-            
-            if (i + 1) % 20 == 0:
-                print(f"     {i+1}/{iterations} ✓")
-        
-        except requests.exceptions.Timeout:
-            print(f"     Timeout na requisição {i+1}")
-        except Exception as e:
-            print(f"     Erro na requisição {i+1}: {str(e)}")
-    
-    if latencies:
-        return {
-            'count': len(latencies),
-            'min': round(min(latencies), 2),
-            'max': round(max(latencies), 2),
-            'avg': round(mean(latencies), 2),
-            'stddev': round(stdev(latencies) if len(latencies) > 1 else 0, 2),
-            'p95': round(sorted(latencies)[int(len(latencies) * 0.95)], 2),
-            'p99': round(sorted(latencies)[int(len(latencies) * 0.99)], 2),
-        }
-    else:
+                erros += 1
+        except Exception:
+            erros += 1
+
+    if not latencias:
         return None
 
-
-# ============================================================================
-# TESTE 2: TAMANHO DE PAYLOAD
-# ============================================================================
-
-def measure_payload_size(payload):
-    """Mede tamanho do payload em bytes"""
-    if isinstance(payload, str):
-        return len(payload.encode('utf-8'))
-    else:
-        return len(json.dumps(payload).encode('utf-8'))
-
-
-# ============================================================================
-# TESTE 3: THROUGHPUT (Apache Bench)
-# ============================================================================
-
-def benchmark_throughput_ab(endpoint, payload, requests_count=1000, concurrency=10, name=""):
-    """
-    Usa Apache Bench para medir throughput
-    
-    Requer: apt-get install apache2-utils (Linux) ou 
-            choco install apache (Windows)
-    """
-    print(f"\n  📊 {name}:")
-    print(f"     Requisições: {requests_count}")
-    print(f"     Concorrência: {concurrency}")
-    
-    try:
-        # Salvar payload em arquivo temporário
-        temp_file = f"/tmp/payload_{name.replace(' ', '_')}.txt"
-        with open(temp_file, 'w') as f:
-            f.write(payload)
-        
-        # Executar apache-bench
-        cmd = [
-            'ab',
-            '-n', str(requests_count),
-            '-c', str(concurrency),
-            '-p', temp_file,
-            '-T', 'text/xml',
-            endpoint
-        ]
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
-        
-        # Parsear output
-        lines = result.stdout.split('\n')
-        stats = {}
-        for line in lines:
-            if 'Requests per second' in line:
-                stats['throughput'] = float(line.split(':')[1].strip().split()[0])
-            elif 'Time per request' in line and 'mean' in line:
-                stats['time_per_request'] = float(line.split(':')[1].strip().split()[0])
-        
-        print(f"     ✅ {stats}")
-        return stats
-    
-    except FileNotFoundError:
-        print(f"     ⚠️  Apache Bench não instalado. Pulando teste.")
-        return None
-    except Exception as e:
-        print(f"     ❌ Erro: {str(e)}")
-        return None
-
-
-# ============================================================================
-# TESTE 4: ANÁLISE DE PAYLOAD
-# ============================================================================
-
-def analyze_payload(name, payload):
-    """Analisa tamanho e estrutura do payload"""
-    size = measure_payload_size(payload)
-    lines = payload.count('\n')
-    
-    if isinstance(payload, str):
-        # XML
-        return {
-            'type': 'XML',
-            'size_bytes': size,
-            'size_kb': round(size / 1024, 2),
-            'lines': lines,
-        }
-    else:
-        # JSON
-        return {
-            'type': 'JSON',
-            'size_bytes': size,
-            'size_kb': round(size / 1024, 2),
-            'fields': len(payload),
-        }
-
-
-# ============================================================================
-# TESTE 5: LOAD TEST (Locust)
-# ============================================================================
-
-def generate_locust_script(soap_endpoint):
-    """Gera script Locust para load testing"""
-    script = f'''
-from locust import HttpUser, task, between
-
-class SOAPUser(HttpUser):
-    wait_time = between(1, 3)
-    
-    @task(3)
-    def listar_medicamentos(self):
-        payload = """<?xml version="1.0"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/"
-               xmlns:tns="http://estoque-farmacia.projeto.interop/v1">
-  <soap:Body>
-    <tns:listarMedicamentos/>
-  </soap:Body>
-</soap:Envelope>"""
-        self.client.post("/soap", data=payload, 
-                        headers={{"Content-Type": "text/xml"}})
-    
-    @task(1)
-    def consultar_disponibilidade(self):
-        payload = """{SOAP_PAYLOAD_CONSULTAR}"""
-        self.client.post("/soap", data=payload,
-                        headers={{"Content-Type": "text/xml"}})
-'''
-    return script
-
-
-# ============================================================================
-# RELATÓRIO FINAL
-# ============================================================================
-
-def generate_report(results):
-    """Gera relatório em JSON e texto"""
-    report = {
-        'timestamp': datetime.now().isoformat(),
-        'benchmarks': results
+    ordenado = sorted(latencias)
+    return {
+        "count": len(latencias),
+        "errors": erros,
+        "success_rate": round(len(latencias) / iterations * 100, 1),
+        "min_ms": round(min(latencias), 2),
+        "avg_ms": round(mean(latencias), 2),
+        "max_ms": round(max(latencias), 2),
+        "stddev_ms": round(stdev(latencias) if len(latencias) > 1 else 0, 2),
+        "p95_ms": round(ordenado[int(len(ordenado) * 0.95)], 2),
+        "p99_ms": round(ordenado[min(int(len(ordenado) * 0.99), len(ordenado) - 1)], 2),
+        "last_response_bytes": tamanho,
     }
-    
-    print("\n" + "="*80)
-    print("📊 RELATÓRIO DE BENCHMARK".center(80))
-    print("="*80)
-    
-    # Latência
-    if 'latency' in results:
-        print("\n⏱️  LATÊNCIA (ms)")
-        print("-"*80)
-        for teste, dados in results['latency'].items():
-            if dados:
-                print(f"\n{teste}")
-                print(f"  Min:    {dados['min']} ms")
-                print(f"  Avg:    {dados['avg']} ms")
-                print(f"  P95:    {dados['p95']} ms")
-                print(f"  P99:    {dados['p99']} ms")
-                print(f"  Max:    {dados['max']} ms")
-                print(f"  StdDev: {dados['stddev']} ms")
-    
-    # Payload
-    if 'payload' in results:
-        print("\n\n📦 TAMANHO DE PAYLOAD")
-        print("-"*80)
-        for nome, dados in results['payload'].items():
-            print(f"\n{nome}")
-            print(f"  Tamanho: {dados['size_bytes']} bytes ({dados['size_kb']} KB)")
-            if 'lines' in dados:
-                print(f"  Linhas:  {dados['lines']}")
-    
-    # Throughput
-    if 'throughput' in results:
-        print("\n\n🚀 THROUGHPUT (com Apache Bench)")
-        print("-"*80)
-        for teste, dados in results['throughput'].items():
-            if dados:
-                print(f"\n{teste}")
-                print(f"  Requests/sec: {dados.get('throughput', 'N/A')}")
-                print(f"  Time/req:     {dados.get('time_per_request', 'N/A')} ms")
-    
-    print("\n" + "="*80 + "\n")
-    
-    # Salvar JSON
-    with open('benchmark_results.json', 'w') as f:
-        json.dump(report, f, indent=2)
-    print("✅ Resultados salvos em: benchmark_results.json\n")
-    
-    return report
 
 
-# ============================================================================
-# MAIN
-# ============================================================================
+def _http_request(url: str, method: str = "GET", data: bytes = None, headers: dict = None):
+    """Retorna (status_code, response_bytes)."""
+    req = urlrequest.Request(url, data=data, headers=headers or {}, method=method)
+    try:
+        with urlrequest.urlopen(req, timeout=10) as resp:
+            body = resp.read()
+            return resp.status, len(body)
+    except HTTPError as e:
+        body = e.read()
+        return e.code, len(body)
+
+
+def req_rest_get(path: str):
+    def _call():
+        return _http_request(f"{REST_BASE_URL}{path}")
+    return _call
+
+
+def req_rest_post(path: str, payload: dict):
+    body = json.dumps(payload).encode("utf-8")
+
+    def _call():
+        return _http_request(
+            f"{REST_BASE_URL}{path}",
+            method="POST",
+            data=body,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+    return _call
+
+
+def req_soap(operacao: str, parametros: dict | None = None):
+    xml = montar_envelope(operacao, parametros or {})
+    data = xml.encode("utf-8")
+
+    def _call():
+        return _http_request(
+            f"{SOAP_BASE_URL}/soap",
+            method="POST",
+            data=data,
+            headers={
+                "Content-Type": "text/xml; charset=utf-8",
+                "SOAPAction": operacao,
+            },
+        )
+
+    return _call, len(data)
+
+
+def calcular_delta(rest_val: float, soap_val: float) -> str:
+    if rest_val == 0:
+        return "N/A"
+    diff = ((soap_val - rest_val) / rest_val) * 100
+    sinal = "+" if diff > 0 else ""
+    return f"{sinal}{diff:.0f}%"
+
+
+def verificar_servidor(base_url: str, health_path: str = "/health") -> bool:
+    try:
+        status, _ = _http_request(f"{base_url}{health_path}")
+        return status == 200
+    except (URLError, HTTPError, TimeoutError):
+        return False
+
+
+def executar_benchmark(iterations: int) -> dict:
+    cenarios = []
+
+    # 1. Listar medicamentos
+    soap_fn, soap_req_bytes = req_soap("listarMedicamentos")
+    rest_payload = {}
+    cenarios.append({
+        "nome": "Listar medicamentos",
+        "rest": {
+            "projeto": "projeto_estoque-farmacia_xml_rest",
+            "endpoint": "GET /api/medicamentos",
+            "request_bytes": len(json.dumps(rest_payload).encode()),
+            "stats": medir_latencia(req_rest_get("/api/medicamentos"), iterations),
+        },
+        "soap": {
+            "projeto": "projeto_estoque-farmacia_soap",
+            "endpoint": "POST /soap → listarMedicamentos",
+            "request_bytes": soap_req_bytes,
+            "stats": medir_latencia(soap_fn, iterations),
+        },
+    })
+
+    # 2. Consultar disponibilidade
+    consulta_rest = {
+        "codigo_medicamento": CODIGO_MEDICAMENTO,
+        "quantidade": QUANTIDADE,
+        "cpf_paciente": CPF_PACIENTE,
+    }
+    consulta_soap = dict(consulta_rest)
+    soap_fn, soap_req_bytes = req_soap("consultarDisponibilidade", consulta_soap)
+    cenarios.append({
+        "nome": "Consultar disponibilidade",
+        "rest": {
+            "projeto": "projeto_estoque-farmacia_xml_rest",
+            "endpoint": "POST /api/estoque/consultar",
+            "request_bytes": len(json.dumps(consulta_rest).encode()),
+            "stats": medir_latencia(req_rest_post("/api/estoque/consultar", consulta_rest), iterations),
+        },
+        "soap": {
+            "projeto": "projeto_estoque-farmacia_soap",
+            "endpoint": "POST /soap → consultarDisponibilidade",
+            "request_bytes": soap_req_bytes,
+            "stats": medir_latencia(soap_fn, iterations),
+        },
+    })
+
+    # 3. Obter estoque
+    soap_fn, soap_req_bytes = req_soap("obterEstoque", {"codigo_medicamento": CODIGO_MEDICAMENTO})
+    cenarios.append({
+        "nome": "Obter estoque",
+        "rest": {
+            "projeto": "projeto_estoque-farmacia_xml_rest",
+            "endpoint": f"GET /api/estoque/{CODIGO_MEDICAMENTO}",
+            "request_bytes": 0,
+            "stats": medir_latencia(req_rest_get(f"/api/estoque/{CODIGO_MEDICAMENTO}"), iterations),
+        },
+        "soap": {
+            "projeto": "projeto_estoque-farmacia_soap",
+            "endpoint": "POST /soap → obterEstoque",
+            "request_bytes": soap_req_bytes,
+            "stats": medir_latencia(soap_fn, iterations),
+        },
+    })
+
+    # 4. Listar lotes
+    soap_fn, soap_req_bytes = req_soap("listarLotes", {"codigo_medicamento": CODIGO_MEDICAMENTO})
+    cenarios.append({
+        "nome": "Listar lotes",
+        "rest": {
+            "projeto": "projeto_estoque-farmacia_xml_rest",
+            "endpoint": f"GET /api/estoque/lotes/{CODIGO_MEDICAMENTO}",
+            "request_bytes": 0,
+            "stats": medir_latencia(req_rest_get(f"/api/estoque/lotes/{CODIGO_MEDICAMENTO}"), iterations),
+        },
+        "soap": {
+            "projeto": "projeto_estoque-farmacia_soap",
+            "endpoint": "POST /soap → listarLotes",
+            "request_bytes": soap_req_bytes,
+            "stats": medir_latencia(soap_fn, iterations),
+        },
+    })
+
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "config": {
+            "soap_url": SOAP_BASE_URL,
+            "rest_url": REST_BASE_URL,
+            "iterations": iterations,
+            "codigo_medicamento": CODIGO_MEDICAMENTO,
+        },
+        "cenarios": cenarios,
+    }
+
+
+def imprimir_relatorio(resultado: dict):
+    print("\n" + "=" * 90)
+    print("BENCHMARK: REST vs SOAP".center(90))
+    print("=" * 90)
+    print(f"Iterações por cenário: {resultado['config']['iterations']}")
+    print(f"REST (xml_rest): {resultado['config']['rest_url']}")
+    print(f"SOAP (soap):     {resultado['config']['soap_url']}\n")
+
+    for cenario in resultado["cenarios"]:
+        rest = cenario["rest"]
+        soap = cenario["soap"]
+        rs = rest["stats"]
+        ss = soap["stats"]
+
+        print(f"--- {cenario['nome']} ---")
+        print(f"  REST  {rest['endpoint']}  [{rest['projeto']}]")
+        print(f"  SOAP  {soap['endpoint']}  [{soap['projeto']}]")
+
+        if not rs or not ss:
+            print("  ERRO: um dos lados não retornou sucesso\n")
+            continue
+
+        print(f"\n  {'Métrica':<22} {'REST':>12} {'SOAP':>12} {'Delta':>10}")
+        print(f"  {'-'*22} {'-'*12} {'-'*12} {'-'*10}")
+        for metric, key in [
+            ("Latência média (ms)", "avg_ms"),
+            ("Latência P95 (ms)", "p95_ms"),
+            ("Latência P99 (ms)", "p99_ms"),
+            ("Latência máx (ms)", "max_ms"),
+        ]:
+            print(f"  {metric:<22} {rs[key]:>12} {ss[key]:>12} {calcular_delta(rs[key], ss[key]):>10}")
+
+        print(f"  {'Payload request (B)':<22} {rest['request_bytes']:>12} {soap['request_bytes']:>12} {calcular_delta(rest['request_bytes'] or 1, soap['request_bytes']):>10}")
+        print(f"  {'Payload response (B)':<22} {rs['last_response_bytes']:>12} {ss['last_response_bytes']:>12} {calcular_delta(rs['last_response_bytes'], ss['last_response_bytes']):>10}")
+        print(f"  {'Taxa sucesso (%)':<22} {rs['success_rate']:>12} {ss['success_rate']:>12}")
+        print()
+
+    medias_rest = [c["rest"]["stats"]["avg_ms"] for c in resultado["cenarios"] if c["rest"]["stats"]]
+    medias_soap = [c["soap"]["stats"]["avg_ms"] for c in resultado["cenarios"] if c["soap"]["stats"]]
+    if medias_rest and medias_soap:
+        avg_rest = mean(medias_rest)
+        avg_soap = mean(medias_soap)
+        print("=" * 90)
+        print("RESUMO")
+        print(f"  Latência média geral REST: {avg_rest:.2f} ms")
+        print(f"  Latência média geral SOAP: {avg_soap:.2f} ms")
+        print(f"  SOAP vs REST: {calcular_delta(avg_rest, avg_soap)} na latência média")
+        print("=" * 90)
+
 
 def main():
-    print("\n" + "="*80)
-    print("🏁 BENCHMARK: REST vs SOAP".center(80))
-    print("="*80)
-    
-    results = {
-        'latency': {},
-        'payload': {},
-        'throughput': {}
-    }
-    
-    # TESTE 1: Latência SOAP
-    print("\n1️⃣  LATÊNCIA - SOAP (listarMedicamentos)")
-    results['latency']['SOAP - listarMedicamentos'] = benchmark_latency(
-        SOAP_BASE,
-        SOAP_PAYLOAD_LISTAR,
-        headers={"Content-Type": "text/xml"},
-        name="listarMedicamentos"
-    )
-    
-    print("\n2️⃣  LATÊNCIA - SOAP (consultarDisponibilidade)")
-    results['latency']['SOAP - consultarDisponibilidade'] = benchmark_latency(
-        SOAP_BASE,
-        SOAP_PAYLOAD_CONSULTAR,
-        headers={"Content-Type": "text/xml"},
-        name="consultarDisponibilidade"
-    )
-    
-    # TESTE 2: Tamanho Payload
-    print("\n\n3️⃣  TAMANHO DE PAYLOAD")
-    print("─"*80)
-    results['payload']['SOAP - listarMedicamentos'] = analyze_payload(
-        'SOAP - listarMedicamentos',
-        SOAP_PAYLOAD_LISTAR
-    )
-    results['payload']['SOAP - consultarDisponibilidade'] = analyze_payload(
-        'SOAP - consultarDisponibilidade',
-        SOAP_PAYLOAD_CONSULTAR
-    )
-    
-    # TESTE 3: Throughput (opcional - requer Apache Bench)
-    print("\n\n4️⃣  THROUGHPUT - Apache Bench (opcional)")
-    print("─"*80)
-    results['throughput']['SOAP'] = benchmark_throughput_ab(
-        SOAP_BASE,
-        SOAP_PAYLOAD_LISTAR,
-        requests_count=100,
-        concurrency=5,
-        name="SOAP"
-    )
-    
-    # TESTE 4: Gerar script Locust
-    print("\n\n5️⃣  GERANDO SCRIPT LOCUST")
-    print("─"*80)
-    locust_script = generate_locust_script(SOAP_BASE)
-    with open('locustfile.py', 'w') as f:
-        f.write(locust_script)
-    print("✅ Script Locust criado: locustfile.py")
-    print("   Para executar: locust -f locustfile.py -u 100 -r 10 -t 5m")
-    
-    # Gerar Relatório
-    generate_report(results)
+    global SOAP_BASE_URL, REST_BASE_URL
+
+    parser = argparse.ArgumentParser(description="Benchmark REST (xml_rest) vs SOAP (soap)")
+    parser.add_argument("--iterations", "-n", type=int, default=50, help="Requisições por cenário (padrão: 50)")
+    parser.add_argument("--output", "-o", default="benchmark_results.json", help="Arquivo de saída JSON")
+    parser.add_argument("--soap-url", default=SOAP_BASE_URL, help="URL base do projeto SOAP (padrão: 8000)")
+    parser.add_argument("--rest-url", default=REST_BASE_URL, help="URL base do projeto REST (padrão: 8001)")
+    args = parser.parse_args()
+
+    SOAP_BASE_URL = args.soap_url.rstrip("/")
+    REST_BASE_URL = args.rest_url.rstrip("/")
+
+    print(f"Verificando SOAP em {SOAP_BASE_URL} ...")
+    if not verificar_servidor(SOAP_BASE_URL, "/soap/health"):
+        print("ERRO: Servidor SOAP não está rodando.")
+        print("Execute: cd projeto_estoque-farmacia_soap && python run_api.py")
+        sys.exit(1)
+
+    print(f"Verificando REST em {REST_BASE_URL} ...")
+    if not verificar_servidor(REST_BASE_URL, "/health"):
+        print("ERRO: Servidor REST não está rodando.")
+        print("Execute: cd projeto_estoque-farmacia_xml_rest && python run_api.py")
+        sys.exit(1)
+
+    print(f"Executando benchmark ({args.iterations} iterações/cenário)...")
+    resultado = executar_benchmark(args.iterations)
+
+    output_path = Path(__file__).parent / args.output
+    with open(output_path, "w", encoding="utf-8") as f:
+        json.dump(resultado, f, indent=2, ensure_ascii=False)
+
+    imprimir_relatorio(resultado)
+    print(f"\nResultados salvos em: {output_path}")
+
+    conclusao_path = Path(__file__).parent / "benchmark_conclusion.json"
+    medias_rest = [c["rest"]["stats"]["avg_ms"] for c in resultado["cenarios"] if c["rest"]["stats"]]
+    medias_soap = [c["soap"]["stats"]["avg_ms"] for c in resultado["cenarios"] if c["soap"]["stats"]]
+    if medias_rest and medias_soap:
+        avg_rest = mean(medias_rest)
+        avg_soap = mean(medias_soap)
+        diff = ((avg_soap - avg_rest) / avg_rest) * 100 if avg_rest else 0
+        conclusao = {
+            "titulo": "Benchmark: REST vs SOAP",
+            "data": resultado["timestamp"],
+            "servidores": {
+                "rest": REST_BASE_URL,
+                "soap": SOAP_BASE_URL,
+            },
+            "metricas": {
+                "latencia_media_rest_ms": round(avg_rest, 2),
+                "latencia_media_soap_ms": round(avg_soap, 2),
+                "delta_percentual": round(diff, 1),
+            },
+            "conclusao": {
+                "melhor_para_performance": "REST" if avg_rest < avg_soap else "SOAP",
+                "melhor_para_interoperabilidade": "SOAP (WSDL, contrato formal, integração G1/G2)",
+                "projeto_rest": "projeto_estoque-farmacia_xml_rest",
+                "projeto_soap": "projeto_estoque-farmacia_soap",
+                "recomendacao": "Comparar os dois projetos em portas distintas para benchmark justo",
+            },
+            "arquivo_resultados": str(output_path.name),
+        }
+        with open(conclusao_path, "w", encoding="utf-8") as f:
+            json.dump(conclusao, f, indent=2, ensure_ascii=False)
+        print(f"Conclusão atualizada: {conclusao_path}")
 
 
 if __name__ == "__main__":

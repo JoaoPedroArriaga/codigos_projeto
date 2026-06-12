@@ -48,11 +48,7 @@ class RepositorioMedicamento(RepositorioBase):
         )
     
     def buscar_por_id(self, id: int) -> Optional[Dict[str, Any]]:
-        return self.db.execute(
-            "SELECT * FROM projeto.medicamentos WHERE id = %s",
-            (id,),
-            fetch_one=True
-        )
+        return self.buscar_por_codigo(id)
     
     def buscar_por_codigo(self, codigo: int) -> Optional[Dict[str, Any]]:
         return self.db.execute(
@@ -63,21 +59,24 @@ class RepositorioMedicamento(RepositorioBase):
     
     def criar(self, dados: Dict[str, Any]) -> int:
         resultado = self.db.execute(
-            "INSERT INTO projeto.medicamentos (codigo, nome) VALUES (%s, %s) RETURNING id",
+            """INSERT INTO projeto.medicamentos (codigo, nome)
+               VALUES (%s, %s)
+               ON CONFLICT (codigo) DO UPDATE SET nome = EXCLUDED.nome
+               RETURNING codigo""",
             (dados['codigo'], dados['nome']),
             fetch_one=True
         )
-        return resultado['id'] if resultado else None
+        return int(resultado['codigo']) if resultado else None
     
     def atualizar(self, id: int, dados: Dict[str, Any]) -> bool:
         return self.db.execute(
-            "UPDATE projeto.medicamentos SET nome = %s WHERE id = %s",
+            "UPDATE projeto.medicamentos SET nome = %s WHERE codigo = %s",
             (dados['nome'], id)
         ) > 0
     
     def deletar(self, id: int) -> bool:
         return self.db.execute(
-            "DELETE FROM projeto.medicamentos WHERE id = %s",
+            "DELETE FROM projeto.medicamentos WHERE codigo = %s",
             (id,)
         ) > 0
 
@@ -215,6 +214,15 @@ class RepositorioReserva(RepositorioBase):
                ORDER BY data_reserva DESC""",
             fetch_all=True
         )
+
+    def listar_por_medicamento_ativas(self, codigo_medicamento: int) -> List[Dict[str, Any]]:
+        return self.db.execute(
+            """SELECT * FROM projeto.reservas_ativas
+               WHERE codigo_medicamento = %s AND status = 'RESERVADO'
+               ORDER BY data_reserva DESC""",
+            (codigo_medicamento,),
+            fetch_all=True
+        ) or []
     
     def criar(self, dados: Dict[str, Any]) -> int:
         resultado = self.db.execute(
@@ -240,3 +248,100 @@ class RepositorioReserva(RepositorioBase):
             "DELETE FROM projeto.reservas_ativas WHERE id_reserva = %s",
             (id,)
         ) > 0
+
+
+class RepositorioBaixa:
+    """Repositório de baixas de estoque (logs + movimentações)"""
+
+    def __init__(self, db):
+        self.db = db
+
+    def listar_por_periodo(
+        self,
+        data_inicio,
+        data_fim
+    ) -> List[Dict[str, Any]]:
+        """Lista baixas processadas em um período"""
+        return self.db.execute(
+            """SELECT lb.id_log, lb.id_prescricao, lb.cpf_paciente,
+                      lb.codigo_medicamento, lb.quantidade,
+                      lb.lote AS numero_lote, lb.data_uso, lb.observacao AS motivo,
+                      lb.data_recebimento AS timestamp, lb.id_lote
+               FROM logs_baixas lb
+               WHERE lb.status = 'PROCESSADO'
+                 AND lb.data_recebimento::date BETWEEN %s AND %s
+               ORDER BY lb.data_recebimento DESC""",
+            (data_inicio, data_fim),
+            fetch_all=True
+        ) or []
+
+    def registrar(
+        self,
+        codigo_medicamento: int,
+        quantidade: int,
+        numero_lote: str,
+        cpf_paciente: str,
+        id_lote: int,
+        quantidade_anterior: int,
+        quantidade_nova: int,
+        motivo: str = "",
+        id_prescricao: int = 0,
+        data_uso: int = None
+    ) -> Dict[str, Any]:
+        """Registra baixa em logs_baixas e movimentacoes"""
+        if data_uso is None:
+            from datetime import datetime
+            data_uso = int(datetime.now().strftime('%y%m%d'))
+
+        log = self.db.execute(
+            """INSERT INTO logs_baixas
+               (arquivo_nome, id_prescricao, cpf_paciente, codigo_medicamento,
+                quantidade, lote, data_uso, id_lote, status, observacao)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               RETURNING id_log""",
+            (
+                'SOAP_API',
+                id_prescricao,
+                cpf_paciente,
+                codigo_medicamento,
+                quantidade,
+                numero_lote,
+                data_uso,
+                id_lote,
+                'PROCESSADO',
+                motivo or 'Baixa via SOAP'
+            ),
+            fetch_one=True
+        )
+
+        if not log:
+            return None
+
+        self.db.execute(
+            """INSERT INTO movimentacoes
+               (id_lote, tipo, quantidade, quantidade_anterior,
+                quantidade_nova, referencia_id, referencia_tabela)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (
+                id_lote,
+                'BAIXA',
+                quantidade,
+                quantidade_anterior,
+                quantidade_nova,
+                log['id_log'],
+                'logs_baixas'
+            )
+        )
+
+        return {
+            'id_baixa': str(log['id_log']),
+            'id_prescricao': id_prescricao,
+            'cpf_paciente': str(cpf_paciente),
+            'codigo_medicamento': codigo_medicamento,
+            'quantidade': quantidade,
+            'numero_lote': numero_lote,
+            'motivo': motivo,
+            'data_uso': data_uso,
+            'quantidade_restante': quantidade_nova,
+            'timestamp': None
+        }

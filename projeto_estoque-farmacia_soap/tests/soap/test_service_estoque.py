@@ -27,9 +27,9 @@ class TestObterEstoque:
     def test_obter_estoque_retorna_tipo_correto(self, servico):
         """Verifica que retorna EstoqueType"""
         try:
-            lista = servico.servico.listar_medicamentos()
+            lista = servico.repo_medicamento.listar_todos()
             if lista:
-                resultado = servico.obter_estoque(lista[0].codigo)
+                resultado = servico.obter_estoque(lista[0]['codigo'])
                 assert isinstance(resultado, EstoqueType)
                 assert resultado.codigo_medicamento is not None
                 assert isinstance(resultado.lotes, list)

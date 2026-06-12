@@ -185,21 +185,22 @@ class ServiceEstoque:
             # Listar reservas ativas para medicamento
             reservas_dict = self.repo_reserva.listar_por_medicamento_ativas(codigo_medicamento)
             
-            return [
-                ReservaType(
-                    id_reserva=r.get('id_reserva'),
-                    id_prescricao=r['id_prescricao'],
-                    cpf_paciente=r['cpf_paciente'],
-                    codigo_medicamento=r['codigo_medicamento'],
-                    quantidade=r['quantidade'],
-                    numero_lote=r['numero_lote'],
-                    data_validade=r.get('data_validade'),
-                    preco=float(r['preco']) if r.get('preco') else None,
+            resultado = []
+            for r in reservas_dict:
+                lote_info = self.repo_lote.buscar_por_id(r['id_lote']) if r.get('id_lote') else None
+                resultado.append(ReservaType(
+                    id_reserva=str(r.get('id_reserva')),
+                    id_prescricao=int(r['id_prescricao']),
+                    cpf_paciente=str(r['cpf_paciente']),
+                    codigo_medicamento=int(r['codigo_medicamento']),
+                    quantidade=int(r['quantidade']),
+                    numero_lote=r['lote'],
+                    data_validade=lote_info['data_validade'] if lote_info else None,
+                    preco=float(lote_info['preco_venda']) if lote_info else None,
                     status=r.get('status'),
-                    data_criacao=r.get('data_criacao')
-                )
-                for r in reservas_dict
-            ]
+                    data_criacao=r.get('data_reserva')
+                ))
+            return resultado
         
         except Exception as e:
             raise Exception(f"ERRO_BANCO_DADOS: {str(e)}")

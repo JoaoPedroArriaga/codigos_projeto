@@ -39,6 +39,7 @@ def iniciar_processamento_background():
 
 def iniciar_api():
     """Inicia a API REST"""
+    port = int(os.getenv("API_PORT", "8001"))
     logger.info("🌐 Iniciando API REST...")
     
     import uvicorn
@@ -47,7 +48,7 @@ def iniciar_api():
     uvicorn.run(
         app,
         host="0.0.0.0",
-        port=8000,
+        port=port,
         log_level="info"
     )
 
@@ -72,8 +73,9 @@ def main():
     
     # Iniciar API na thread principal
     logger.info("=" * 60)
-    logger.info("📡 API disponível em http://localhost:8000")
-    logger.info("📚 Documentação em http://localhost:8000/docs")
+    port = int(os.getenv("API_PORT", "8001"))
+    logger.info(f"📡 API disponível em http://localhost:{port}")
+    logger.info(f"📚 Documentação em http://localhost:{port}/docs")
     logger.info("=" * 60)
     
     iniciar_api()
