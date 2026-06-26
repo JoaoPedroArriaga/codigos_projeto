@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 import os
 
+from src.soap.middleware.request_logging import SoapRequestLoggingMiddleware
 from src.soap.routes import registrar_rotas_soap
 from src.servicos.relatorio_consumo import RelatorioConsumoService
 
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SoapRequestLoggingMiddleware)
 
 registrar_rotas_soap(app)
 

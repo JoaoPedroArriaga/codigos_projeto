@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, Response
 import os
 
+from src.api.middleware.request_logging import RequestLoggingMiddleware
 from src.servicos.relatorio_consumo import RelatorioConsumoService
 
 # Importar rotas
@@ -35,6 +36,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(RequestLoggingMiddleware)
 
 # Registrar rotas
 app.include_router(router_medicamentos)

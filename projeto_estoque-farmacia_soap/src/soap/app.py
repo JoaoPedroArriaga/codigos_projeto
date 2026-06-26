@@ -5,6 +5,7 @@ Para uso unificado, prefira: python run_api.py
 """
 from fastapi import FastAPI
 
+from src.soap.middleware.request_logging import SoapRequestLoggingMiddleware
 from src.soap.routes import registrar_rotas_soap
 
 
@@ -15,6 +16,7 @@ def criar_app():
         description="API SOAP para gerenciamento de estoque farmacêutico",
         version="1.0"
     )
+    app.add_middleware(SoapRequestLoggingMiddleware)
     registrar_rotas_soap(app)
     return app
 
